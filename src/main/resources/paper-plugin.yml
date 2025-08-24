@@ -2,3 +2,13 @@ name: farmingPlugin
 version: '1.0-SNAPSHOT'
 main: org.maks.farmingPlugin.FarmingPlugin
 api-version: '1.20'
+depend: [Vault]
+permissions:
+  plantation.access:
+    description: Access to plantation system
+    default: true
+commands:
+  plantation:
+    description: Main plantation command
+    usage: /plantation
+    permission: plantation.access

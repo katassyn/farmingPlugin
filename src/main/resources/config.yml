@@ -1,0 +1,231 @@
+# Farming Plugin Configuration
+
+database:
+  host: "localhost"
+  port: 3306
+  database: "plantation"
+  username: "root"
+  password: ""
+
+# Farm type configurations
+farms:
+  berry_orchards:
+    display_name: "Berry Orchards"
+    block_type: "SWEET_BERRY_BUSH"
+    unlock_cost: 0
+    max_instances: 6
+    growth_time_hours: 8
+    storage_limit: 500
+    materials:
+      - type: "plant_fiber"
+        tier: 1
+        rate: 70.0
+      - type: "plant_fiber"
+        tier: 2
+        rate: 25.0
+      - type: "herbal_extract"
+        tier: 1
+        rate: 20.0
+
+  melon_groves:
+    display_name: "Melon Groves"
+    block_type: "MELON"
+    unlock_cost: 250000000
+    max_instances: 6
+    growth_time_hours: 10
+    storage_limit: 400
+    required_materials:
+      - type: "plant_fiber"
+        tier: 1
+        amount: 50
+      - type: "herbal_extract"
+        tier: 1
+        amount: 10
+    materials:
+      - type: "seed_pouch"
+        tier: 1
+        rate: 60.0
+      - type: "seed_pouch"
+        tier: 2
+        rate: 30.0
+      - type: "plant_fiber"
+        tier: 1
+        rate: 25.0
+
+  fungal_caverns:
+    display_name: "Fungal Caverns"
+    block_type: "RED_MUSHROOM_BLOCK"
+    unlock_cost: 500000000
+    max_instances: 6
+    growth_time_hours: 14
+    storage_limit: 350
+    required_materials:
+      - type: "seed_pouch"
+        tier: 1
+        amount: 30
+      - type: "plant_fiber"
+        tier: 2
+        amount: 15
+    materials:
+      - type: "mushroom_spores"
+        tier: 1
+        rate: 45.0
+      - type: "mushroom_spores"
+        tier: 2
+        rate: 20.0
+      - type: "mushroom_spores"
+        tier: 3
+        rate: 8.0
+      - type: "compost_dust"
+        tier: 1
+        rate: 35.0
+      - type: "compost_dust"
+        tier: 2
+        rate: 15.0
+
+  pumpkin_patches:
+    display_name: "Pumpkin Patches"
+    block_type: "PUMPKIN"
+    unlock_cost: 750000000
+    max_instances: 6
+    growth_time_hours: 16
+    storage_limit: 300
+    required_materials:
+      - type: "mushroom_spores"
+        tier: 1
+        amount: 25
+      - type: "compost_dust"
+        tier: 1
+        amount: 20
+    materials:
+      - type: "seed_pouch"
+        tier: 2
+        rate: 40.0
+      - type: "seed_pouch"
+        tier: 3
+        rate: 15.0
+      - type: "compost_dust"
+        tier: 1
+        rate: 50.0
+      - type: "compost_dust"
+        tier: 2
+        rate: 25.0
+      - type: "compost_dust"
+        tier: 3
+        rate: 8.0
+
+  mystic_gardens:
+    display_name: "Mystic Gardens"
+    block_type: "BEETROOTS"
+    unlock_cost: 1500000000
+    max_instances: 3
+    growth_time_hours: 20
+    storage_limit: 200
+    required_materials:
+      - type: "seed_pouch"
+        tier: 2
+        amount: 20
+      - type: "compost_dust"
+        tier: 2
+        amount: 15
+      - type: "mushroom_spores"
+        tier: 2
+        amount: 10
+    materials:
+      - type: "herbal_extract"
+        tier: 1
+        rate: 35.0
+      - type: "herbal_extract"
+        tier: 2
+        rate: 20.0
+      - type: "herbal_extract"
+        tier: 3
+        rate: 10.0
+      - type: "beeswax_chunk"
+        tier: 1
+        rate: 25.0
+      - type: "beeswax_chunk"
+        tier: 2
+        rate: 12.0
+
+  ancient_mangroves:
+    display_name: "Ancient Mangroves"
+    block_type: "MANGROVE_PROPAGULE"
+    unlock_cost: 4000000000
+    max_instances: 3
+    growth_time_hours: 30
+    storage_limit: 100
+    required_materials:
+      - type: "herbal_extract"
+        tier: 2
+        amount: 25
+      - type: "beeswax_chunk"
+        tier: 1
+        amount: 15
+      - type: "compost_dust"
+        tier: 3
+        amount: 10
+    materials:
+      - type: "druidic_essence"
+        tier: 1
+        rate: 18.0
+      - type: "druidic_essence"
+        tier: 2
+        rate: 6.0
+      - type: "mushroom_spores"
+        tier: 3
+        rate: 15.0
+      - type: "beeswax_chunk"
+        tier: 3
+        rate: 12.0
+
+  desert_sanctuaries:
+    display_name: "Desert Sanctuaries"
+    block_type: "CACTUS"
+    unlock_cost: 10000000000
+    max_instances: 1
+    growth_time_hours: 40
+    storage_limit: 50
+    required_materials:
+      - type: "druidic_essence"
+        tier: 1
+        amount: 10
+      - type: "beeswax_chunk"
+        tier: 2
+        amount: 15
+      - type: "herbal_extract"
+        tier: 3
+        amount: 8
+    materials:
+      - type: "golden_truffle"
+        tier: 1
+        rate: 10.0
+      - type: "golden_truffle"
+        tier: 2
+        rate: 4.0
+      - type: "golden_truffle"
+        tier: 3
+        rate: 1.5
+      - type: "ancient_grain"
+        tier: 1
+        rate: 8.0
+      - type: "ancient_grain"
+        tier: 2
+        rate: 3.0
+      - type: "druidic_essence"
+        tier: 2
+        rate: 6.0
+      - type: "druidic_essence"
+        tier: 3
+        rate: 2.0
+
+# Instance upgrade costs (multiplied by instance number)
+instance_base_cost: 1000000000
+
+# GUI settings
+gui:
+  title_color: "&6"
+  primary_color: "&e"
+  secondary_color: "&7"
+  success_color: "&a"
+  error_color: "&c"
