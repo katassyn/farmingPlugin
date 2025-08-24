@@ -1,0 +1,4 @@
+name: farmingPlugin
+version: '1.0-SNAPSHOT'
+main: org.maks.farmingPlugin.FarmingPlugin
+api-version: '1.20'
