@@ -121,9 +121,9 @@ public class PlantationGUI implements InventoryHolder {
 
     private void addControlButtons() {
         List<String> collectLore = new ArrayList<>();
-        collectLore.add(ChatColor.GRAY + "Click to collect all materials");
-        collectLore.add(ChatColor.GRAY + "to your inventory");
-        ItemStack collectButton = createItem(Material.HOPPER, 
+        collectLore.add(ChatColor.GRAY + "Click to drop all materials");
+        collectLore.add(ChatColor.GRAY + "on the ground");
+        ItemStack collectButton = createItem(Material.HOPPER,
                                            ChatColor.GREEN + "Collect All", collectLore);
         inventory.setItem(49, collectButton);
         
@@ -169,7 +169,7 @@ public class PlantationGUI implements InventoryHolder {
             farmInstance.clearStoredMaterials();
             plugin.getPlantationManager().savePlayerData(player.getUniqueId());
             
-            player.sendMessage(ChatColor.GREEN + "Collected " + collected + " materials!");
+            player.sendMessage(ChatColor.GREEN + "Dropped " + collected + " materials on the ground!");
             refresh();
         } else {
             player.sendMessage(ChatColor.RED + "No materials to collect!");
