@@ -159,13 +159,8 @@ public class PlantationGUI implements InventoryHolder {
                 if (materialType != null) {
                     ItemStack materialItem = materialManager.createMaterial(materialType, tier, amount);
                     
-                    if (player.getInventory().firstEmpty() != -1) {
-                        player.getInventory().addItem(materialItem);
-                        collected += amount;
-                    } else {
-                        player.getWorld().dropItem(player.getLocation(), materialItem);
-                        collected += amount;
-                    }
+                    player.getWorld().dropItem(player.getLocation(), materialItem);
+                    collected += amount;
                 }
             }
         }

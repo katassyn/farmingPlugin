@@ -2,7 +2,6 @@ package org.maks.farmingPlugin.commands;
 
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
-import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -15,7 +14,6 @@ import org.maks.farmingPlugin.farms.FarmType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.UUID;
 
 public class PlantationCommand implements CommandExecutor, TabCompleter {
     private final FarmingPlugin plugin;
@@ -81,17 +79,15 @@ public class PlantationCommand implements CommandExecutor, TabCompleter {
     }
 
     private void teleportToPlantation(Player player) {
-        Location plantationLocation = getPlantationLocation(player.getUniqueId());
-        
-        if (plantationLocation != null) {
-            player.teleport(plantationLocation);
-            player.sendMessage(ChatColor.GREEN + "Welcome to your plantation!");
-            
-            plugin.getPlantationManager().loadPlayerData(player.getUniqueId());
-            plugin.getOfflineGrowthManager().onPlayerJoin(player.getUniqueId());
-        } else {
-            createPlantationForPlayer(player);
-        }
+        org.maks.farmingPlugin.managers.PlantationAreaManager.PlantationArea area =
+                plugin.getPlantationAreaManager().getOrCreateArea(player);
+
+        Location plantationLocation = area.getCenter();
+        player.teleport(plantationLocation);
+        player.sendMessage(ChatColor.GREEN + "Welcome to your plantation!");
+
+        plugin.getPlantationManager().loadPlayerData(player.getUniqueId());
+        plugin.getOfflineGrowthManager().onPlayerJoin(player.getUniqueId());
     }
 
     private void showPlantationInfo(Player player) {
@@ -206,28 +202,6 @@ public class PlantationCommand implements CommandExecutor, TabCompleter {
         }
     }
 
-    private Location getPlantationLocation(UUID playerId) {
-        World world = plugin.getServer().getWorld("world");
-        if (world == null) return null;
-        
-        String worldName = playerId.toString().substring(0, 8);
-        int x = playerId.hashCode() % 10000;
-        int z = (playerId.hashCode() / 10000) % 10000;
-        
-        return new Location(world, x, 100, z);
-    }
-
-    private void createPlantationForPlayer(Player player) {
-        Location plantationLocation = getPlantationLocation(player.getUniqueId());
-        
-        if (plantationLocation != null) {
-            player.teleport(plantationLocation);
-            player.sendMessage(ChatColor.GREEN + "Welcome to your new plantation!");
-            player.sendMessage(ChatColor.GRAY + "Right-click blocks to interact with your farms!");
-            
-            plugin.getPlantationManager().loadPlayerData(player.getUniqueId());
-        }
-    }
 
     private void sendHelpMessage(Player player) {
         player.sendMessage(ChatColor.GOLD + "=== Plantation Commands ===");
