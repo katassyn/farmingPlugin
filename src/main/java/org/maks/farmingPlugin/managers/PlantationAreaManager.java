@@ -1,176 +1,155 @@
 package org.maks.farmingPlugin.managers;
 
-import org.bukkit.Chunk;
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.entity.Player;
 import org.maks.farmingPlugin.FarmingPlugin;
+import org.maks.farmingPlugin.database.DatabaseManager;
 import org.maks.farmingPlugin.farms.FarmType;
 
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Handles allocation and basic management of player plantation areas.
+ * This is a lightweight implementation that provides plot generation,
+ * anchor block placement and simple boundary checks.
+ */
 public class PlantationAreaManager {
+
     private final FarmingPlugin plugin;
-    private final Map<UUID, PlantationArea> playerAreas;
-    private final int PLANTATION_SIZE = 64;
-    private final int SPACING_BETWEEN_PLANTATIONS = 128;
+    private final Map<UUID, PlantationArea> areas = new HashMap<>();
+
+    private final World world;
+    private final int originX, originY, originZ;
+    private final int plotWidth, plotDepth, spacing, gridRows, gridCols;
+    private final Material fenceMaterial, gateMaterial;
 
     public PlantationAreaManager(FarmingPlugin plugin) {
         this.plugin = plugin;
-        this.playerAreas = new ConcurrentHashMap<>();
+
+        ConfigurationSection base = plugin.getConfig().getConfigurationSection("plantations.base");
+        this.world = Bukkit.getWorld(plugin.getConfig().getString("plantations.world", "world"));
+        ConfigurationSection originSec = base.getConfigurationSection("origin");
+        this.originX = originSec.getInt("x");
+        this.originY = originSec.getInt("y");
+        this.originZ = originSec.getInt("z");
+        ConfigurationSection plotSec = base.getConfigurationSection("plot");
+        this.plotWidth = plotSec.getInt("width");
+        this.plotDepth = plotSec.getInt("depth");
+        this.fenceMaterial = Material.valueOf(plotSec.getString("fence_material", "OAK_FENCE"));
+        this.gateMaterial = Material.valueOf(plotSec.getString("gate_material", "OAK_FENCE_GATE"));
+        this.spacing = base.getInt("spacing");
+        ConfigurationSection gridSec = base.getConfigurationSection("grid");
+        this.gridRows = gridSec.getInt("rows");
+        this.gridCols = gridSec.getInt("cols");
     }
 
-    public PlantationArea getOrCreatePlantationArea(UUID playerId) {
-        return playerAreas.computeIfAbsent(playerId, this::createPlantationArea);
+    /**
+     * Gets existing plantation area for player or creates a new one.
+     */
+    public PlantationArea getOrCreateArea(Player player) {
+        return areas.computeIfAbsent(player.getUniqueId(), uuid -> {
+            DatabaseManager db = plugin.getDatabaseManager();
+            Location origin = db.loadPlayerPlot(uuid).orElseGet(() -> allocateNewPlot(uuid));
+            buildPlot(origin);
+            Map<FarmType, Location> anchors = placeAnchors(origin);
+            return new PlantationArea(uuid, origin, anchors, plotWidth, plotDepth);
+        });
     }
 
-    private PlantationArea createPlantationArea(UUID playerId) {
-        World world = plugin.getServer().getWorld("world");
-        if (world == null) {
-            world = plugin.getServer().getWorlds().get(0);
+    private Location allocateNewPlot(UUID uuid) {
+        int index = areas.size();
+        int row = index / gridCols;
+        int col = index % gridCols;
+        int x = originX + col * (plotWidth + spacing);
+        int z = originZ + row * (plotDepth + spacing);
+        Location loc = new Location(world, x, originY, z);
+        plugin.getDatabaseManager().savePlayerPlot(uuid, world.getName(), x, originY, z);
+        return loc;
+    }
+
+    private void buildPlot(Location origin) {
+        if (world == null) return;
+        int x1 = origin.getBlockX();
+        int z1 = origin.getBlockZ();
+        int x2 = x1 + plotWidth - 1;
+        int z2 = z1 + plotDepth - 1;
+        int y = origin.getBlockY();
+
+        for (int x = x1; x <= x2; x++) {
+            world.getBlockAt(x, y, z1).setType(fenceMaterial);
+            world.getBlockAt(x, y, z2).setType(fenceMaterial);
         }
-
-        int hash = Math.abs(playerId.hashCode());
-        int gridX = (hash % 1000) * SPACING_BETWEEN_PLANTATIONS;
-        int gridZ = ((hash / 1000) % 1000) * SPACING_BETWEEN_PLANTATIONS;
-
-        int startX = gridX - PLANTATION_SIZE / 2;
-        int startZ = gridZ - PLANTATION_SIZE / 2;
-        int endX = gridX + PLANTATION_SIZE / 2;
-        int endZ = gridZ + PLANTATION_SIZE / 2;
-
-        Location center = new Location(world, gridX, 100, gridZ);
-        Location corner1 = new Location(world, startX, 50, startZ);
-        Location corner2 = new Location(world, endX, 150, endZ);
-
-        return new PlantationArea(playerId, center, corner1, corner2, createFarmAreas());
-    }
-
-    private Map<FarmType, FarmAreaLayout> createFarmAreas() {
-        Map<FarmType, FarmAreaLayout> farmAreas = new HashMap<>();
-        
-        farmAreas.put(FarmType.BERRY_ORCHARDS, new FarmAreaLayout(-30, -30, 6, 2, 3));
-        farmAreas.put(FarmType.MELON_GROVES, new FarmAreaLayout(-30, -10, 6, 2, 3));
-        farmAreas.put(FarmType.FUNGAL_CAVERNS, new FarmAreaLayout(-30, 10, 6, 2, 3));
-        farmAreas.put(FarmType.PUMPKIN_PATCHES, new FarmAreaLayout(10, -30, 6, 2, 3));
-        farmAreas.put(FarmType.MYSTIC_GARDENS, new FarmAreaLayout(10, -10, 3, 1, 3));
-        farmAreas.put(FarmType.ANCIENT_MANGROVES, new FarmAreaLayout(10, 10, 3, 1, 3));
-        farmAreas.put(FarmType.DESERT_SANCTUARIES, new FarmAreaLayout(0, 0, 1, 1, 1));
-        
-        return farmAreas;
-    }
-
-    public boolean isLocationInPlantation(UUID playerId, Location location) {
-        PlantationArea area = playerAreas.get(playerId);
-        if (area == null) {
-            area = getOrCreatePlantationArea(playerId);
+        for (int z = z1; z <= z2; z++) {
+            world.getBlockAt(x1, y, z).setType(fenceMaterial);
+            world.getBlockAt(x2, y, z).setType(fenceMaterial);
         }
-
-        return area.contains(location);
+        world.getBlockAt(x1 + plotWidth / 2, y, z1).setType(gateMaterial);
     }
 
-    public int getFarmInstanceFromLocation(UUID playerId, FarmType farmType, Location location) {
-        PlantationArea area = getOrCreatePlantationArea(playerId);
-        FarmAreaLayout layout = area.getFarmArea(farmType);
-        
-        if (layout == null) return 1;
-
-        Location center = area.getCenter();
-        int relativeX = (int) (location.getX() - center.getX() - layout.getOffsetX());
-        int relativeZ = (int) (location.getZ() - center.getZ() - layout.getOffsetZ());
-
-        if (relativeX < 0 || relativeZ < 0) return 1;
-
-        int gridX = relativeX / layout.getSpacing();
-        int gridZ = relativeZ / layout.getSpacing();
-
-        if (gridX >= layout.getColumns() || gridZ >= layout.getRows()) return 1;
-
-        int instance = (gridZ * layout.getColumns() + gridX) + 1;
-        return Math.min(instance, farmType.getMaxInstances());
-    }
-
-    public Location getFarmInstanceLocation(UUID playerId, FarmType farmType, int instanceId) {
-        PlantationArea area = getOrCreatePlantationArea(playerId);
-        FarmAreaLayout layout = area.getFarmArea(farmType);
-        
-        if (layout == null || instanceId < 1 || instanceId > farmType.getMaxInstances()) {
-            return area.getCenter();
+    private Map<FarmType, Location> placeAnchors(Location origin) {
+        Map<FarmType, Location> anchors = new EnumMap<>(FarmType.class);
+        int[][] offsets = { {2,2}, {4,2}, {6,2}, {2,4}, {4,4}, {6,4}, {4,6} };
+        FarmType[] types = FarmType.values();
+        for (int i = 0; i < Math.min(types.length, offsets.length); i++) {
+            Location loc = origin.clone().add(offsets[i][0], 0, offsets[i][1]);
+            if (world != null) {
+                world.getBlockAt(loc).setType(types[i].getBlockType());
+            }
+            anchors.put(types[i], loc);
         }
-
-        int adjustedId = instanceId - 1;
-        int gridX = adjustedId % layout.getColumns();
-        int gridZ = adjustedId / layout.getColumns();
-
-        Location center = area.getCenter();
-        double x = center.getX() + layout.getOffsetX() + (gridX * layout.getSpacing());
-        double z = center.getZ() + layout.getOffsetZ() + (gridZ * layout.getSpacing());
-
-        return new Location(center.getWorld(), x, center.getY(), z);
+        return anchors;
     }
 
+    public boolean isLocationInPlantation(UUID owner, Location loc) {
+        PlantationArea area = areas.get(owner);
+        return area != null && area.contains(loc);
+    }
+
+    public int getFarmInstanceFromLocation(UUID owner, FarmType type, Location loc) {
+        // Each anchor represents instance #1 for that farm type in this basic implementation
+        return 1;
+    }
+
+    public Location getAnchor(UUID owner, FarmType type) {
+        PlantationArea area = areas.get(owner);
+        return area != null ? area.anchors.get(type) : null;
+    }
+
+    /** Represents a single player's plantation plot. */
     public static class PlantationArea {
-        private final UUID ownerId;
-        private final Location center;
-        private final Location corner1;
-        private final Location corner2;
-        private final Map<FarmType, FarmAreaLayout> farmAreas;
+        private final UUID owner;
+        private final Location origin;
+        private final Map<FarmType, Location> anchors;
+        private final int width;
+        private final int depth;
 
-        public PlantationArea(UUID ownerId, Location center, Location corner1, Location corner2, 
-                            Map<FarmType, FarmAreaLayout> farmAreas) {
-            this.ownerId = ownerId;
-            this.center = center;
-            this.corner1 = corner1;
-            this.corner2 = corner2;
-            this.farmAreas = farmAreas;
+        PlantationArea(UUID owner, Location origin, Map<FarmType, Location> anchors, int width, int depth) {
+            this.owner = owner;
+            this.origin = origin;
+            this.anchors = anchors;
+            this.width = width;
+            this.depth = depth;
         }
 
-        public boolean contains(Location location) {
-            if (!location.getWorld().equals(center.getWorld())) return false;
-
-            double x = location.getX();
-            double z = location.getZ();
-            double y = location.getY();
-
-            return x >= Math.min(corner1.getX(), corner2.getX()) &&
-                   x <= Math.max(corner1.getX(), corner2.getX()) &&
-                   z >= Math.min(corner1.getZ(), corner2.getZ()) &&
-                   z <= Math.max(corner1.getZ(), corner2.getZ()) &&
-                   y >= Math.min(corner1.getY(), corner2.getY()) &&
-                   y <= Math.max(corner1.getY(), corner2.getY());
+        public Location getCenter() {
+            return origin.clone().add(width / 2.0, 1, depth / 2.0);
         }
 
-        public UUID getOwnerId() { return ownerId; }
-        public Location getCenter() { return center; }
-        public Location getCorner1() { return corner1; }
-        public Location getCorner2() { return corner2; }
-        public FarmAreaLayout getFarmArea(FarmType farmType) { return farmAreas.get(farmType); }
-    }
-
-    public static class FarmAreaLayout {
-        private final int offsetX;
-        private final int offsetZ;
-        private final int maxInstances;
-        private final int rows;
-        private final int columns;
-        private final int spacing;
-
-        public FarmAreaLayout(int offsetX, int offsetZ, int maxInstances, int rows, int columns) {
-            this.offsetX = offsetX;
-            this.offsetZ = offsetZ;
-            this.maxInstances = maxInstances;
-            this.rows = rows;
-            this.columns = columns;
-            this.spacing = 8;
+        boolean contains(Location loc) {
+            if (loc == null || origin.getWorld() == null) return false;
+            if (!loc.getWorld().equals(origin.getWorld())) return false;
+            int x = loc.getBlockX();
+            int z = loc.getBlockZ();
+            int x1 = origin.getBlockX();
+            int z1 = origin.getBlockZ();
+            return x >= x1 && x < x1 + width && z >= z1 && z < z1 + depth;
         }
-
-        public int getOffsetX() { return offsetX; }
-        public int getOffsetZ() { return offsetZ; }
-        public int getMaxInstances() { return maxInstances; }
-        public int getRows() { return rows; }
-        public int getColumns() { return columns; }
-        public int getSpacing() { return spacing; }
     }
 }
