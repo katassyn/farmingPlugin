@@ -1,10 +1,10 @@
 # Farming Plugin Configuration
 
 database:
-  host: "localhost"
-  port: 3306
-  database: "plantation"
-  username: "root"
+  host: ''
+  port: ''
+  database: ''
+  username: ""
   password: ""
 
 # Farm type configurations

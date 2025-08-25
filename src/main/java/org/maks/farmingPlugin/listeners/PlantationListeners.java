@@ -105,11 +105,12 @@ public class PlantationListeners implements Listener {
     }
 
     private boolean isOnPlayerPlantation(Player player, Block block) {
-        return true;
+        return plugin.getPlantationAreaManager().isLocationInPlantation(player.getUniqueId(), block.getLocation());
     }
 
     private int determineFarmInstance(Player player, Block block, FarmType farmType) {
-        return 1;
+        return plugin.getPlantationAreaManager().getFarmInstanceFromLocation(
+                player.getUniqueId(), farmType, block.getLocation());
     }
 
     private boolean canCreateNewFarm(Player player, FarmType farmType) {

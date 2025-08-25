@@ -6,6 +6,7 @@ import org.maks.farmingPlugin.database.DatabaseManager;
 import org.maks.farmingPlugin.listeners.PlantationListeners;
 import org.maks.farmingPlugin.managers.EconomyManager;
 import org.maks.farmingPlugin.managers.OfflineGrowthManager;
+import org.maks.farmingPlugin.managers.PlantationAreaManager;
 import org.maks.farmingPlugin.managers.PlantationManager;
 import org.maks.farmingPlugin.materials.MaterialManager;
 
@@ -17,6 +18,7 @@ public final class FarmingPlugin extends JavaPlugin {
     private MaterialManager materialManager;
     private EconomyManager economyManager;
     private PlantationManager plantationManager;
+    private PlantationAreaManager plantationAreaManager;
     private OfflineGrowthManager offlineGrowthManager;
 
     @Override
@@ -39,6 +41,9 @@ public final class FarmingPlugin extends JavaPlugin {
             
             plantationManager = new PlantationManager(this, databaseManager);
             getLogger().info("Plantation manager initialized!");
+            
+            plantationAreaManager = new PlantationAreaManager(this);
+            getLogger().info("Plantation area manager initialized!");
             
             offlineGrowthManager = new OfflineGrowthManager(this, plantationManager);
             getLogger().info("Offline growth system initialized!");
@@ -89,5 +94,9 @@ public final class FarmingPlugin extends JavaPlugin {
 
     public OfflineGrowthManager getOfflineGrowthManager() {
         return offlineGrowthManager;
+    }
+
+    public PlantationAreaManager getPlantationAreaManager() {
+        return plantationAreaManager;
     }
 }
