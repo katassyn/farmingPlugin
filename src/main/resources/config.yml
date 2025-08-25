@@ -229,3 +229,30 @@ gui:
   secondary_color: "&7"
   success_color: "&a"
   error_color: "&c"
+
+plantations:
+  world: "world"
+  base:
+    origin:
+      x: 2000
+      y: 64
+      z: 2000
+    plot:
+      width: 17
+      depth: 17
+      fence_material: "OAK_FENCE"
+      gate_material: "OAK_FENCE_GATE"
+    spacing: 6
+    grid:
+      rows: 100
+      cols: 100
+  protection:
+    block_entry: true
+    block_build: true
+  holograms:
+    enabled: true
+    title: "&e{farm_display}"
+    running: "&7Next: &a{time_left}"
+    ready: "&a&lREADY! &7Click to collect"
+  drop:
+    radius: 0.6

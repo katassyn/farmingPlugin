@@ -115,10 +115,21 @@ public class DatabaseManager {
             )
             """;
 
+        String playerPlotsTable = """
+            CREATE TABLE IF NOT EXISTS player_plots (
+                uuid VARCHAR(36) PRIMARY KEY,
+                world VARCHAR(64) NOT NULL,
+                origin_x INT NOT NULL,
+                origin_y INT NOT NULL,
+                origin_z INT NOT NULL
+            )
+            """;
+
         try (Statement stmt = getConnection().createStatement()) {
             stmt.executeUpdate(playerPlantationsTable);
             stmt.executeUpdate(playerMaterialsTable);
             stmt.executeUpdate(plantationStorageTable);
+            stmt.executeUpdate(playerPlotsTable);
             plugin.getLogger().info("Database tables created successfully!");
         } catch (SQLException e) {
             plugin.getLogger().log(Level.SEVERE, "Could not create database tables!", e);
@@ -127,5 +138,42 @@ public class DatabaseManager {
 
     public PreparedStatement prepareStatement(String sql) throws SQLException {
         return getConnection().prepareStatement(sql);
+    }
+
+    public void savePlayerPlot(java.util.UUID uuid, String world, int x, int y, int z) {
+        String sql = "REPLACE INTO player_plots (uuid, world, origin_x, origin_y, origin_z) VALUES (?,?,?,?,?)";
+        try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
+            ps.setString(1, uuid.toString());
+            ps.setString(2, world);
+            ps.setInt(3, x);
+            ps.setInt(4, y);
+            ps.setInt(5, z);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.SEVERE, "Could not save player plot", e);
+        }
+    }
+
+    public java.util.Optional<org.bukkit.Location> loadPlayerPlot(java.util.UUID uuid) {
+        String sql = "SELECT world, origin_x, origin_y, origin_z FROM player_plots WHERE uuid = ?";
+        try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
+            ps.setString(1, uuid.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    org.bukkit.World world = Bukkit.getWorld(rs.getString("world"));
+                    if (world != null) {
+                        return java.util.Optional.of(new org.bukkit.Location(
+                            world,
+                            rs.getInt("origin_x"),
+                            rs.getInt("origin_y"),
+                            rs.getInt("origin_z")
+                        ));
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.SEVERE, "Could not load player plot", e);
+        }
+        return java.util.Optional.empty();
     }
 }
