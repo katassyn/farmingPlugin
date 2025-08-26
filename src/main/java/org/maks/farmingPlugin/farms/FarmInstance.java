@@ -299,7 +299,7 @@ public class FarmInstance {
                 materials.put(MaterialType.MUSHROOM_SPORES, 8 * nextLevel);
             }
             case "quality" -> {
-                materials.put(MaterialType.HERBAL_EXTRACT, 10 * nextLevel);
+                materials.put(MaterialType.HERB_EXTRACT, 10 * nextLevel);
                 materials.put(MaterialType.BEESWAX_CHUNK, 5 * nextLevel);
                 if (nextLevel > 3) {
                     materials.put(MaterialType.DRUIDIC_ESSENCE, 3 * (nextLevel - 3));

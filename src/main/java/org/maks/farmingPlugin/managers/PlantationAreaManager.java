@@ -37,7 +37,7 @@ public class PlantationAreaManager {
     private final int plotDepth = 15;
     private final int spacing;
     private final int gridRows, gridCols;
-    private final Material fenceMaterial, gateMaterial;
+    private final Material fenceMaterial;
 
     private NamespacedKey PDC_LOCKED;
     private NamespacedKey PDC_FARM_TYPE;
@@ -114,12 +114,10 @@ public class PlantationAreaManager {
 
         ConfigurationSection plotSec = base.getConfigurationSection("plot");
         if (plotSec == null) {
-            plugin.getLogger().warning("Missing 'plantations.base.plot' section in config; using default fence and gate materials.");
+            plugin.getLogger().warning("Missing 'plantations.base.plot' section in config; using default fence material.");
             this.fenceMaterial = Material.OAK_FENCE;
-            this.gateMaterial = Material.OAK_FENCE_GATE;
         } else {
             this.fenceMaterial = Material.valueOf(plotSec.getString("fence_material", "OAK_FENCE"));
-            this.gateMaterial = Material.valueOf(plotSec.getString("gate_material", "OAK_FENCE_GATE"));
         }
 
         this.spacing = base.getInt("spacing");
@@ -208,34 +206,30 @@ public class PlantationAreaManager {
                 world.getBlockAt(x, y, z).setType(Material.AIR);
                 world.getBlockAt(x, y + 1, z).setType(Material.AIR);
                 world.getBlockAt(x, y + 2, z).setType(Material.AIR);
+                world.getBlockAt(x, y + 3, z).setType(Material.AIR);
+                world.getBlockAt(x, y + 4, z).setType(Material.AIR);
             }
         }
 
-        // Build fence perimeter with barrier above to keep drops contained
+        // Build fence perimeter with high barriers to contain players and drops
         for (int x = x1; x <= x2; x++) {
             world.getBlockAt(x, y, z1).setType(fenceMaterial);
-            world.getBlockAt(x, barrierY, z1).setType(Material.BARRIER);
-
             world.getBlockAt(x, y, z2).setType(fenceMaterial);
-            if (x != gateX && x != gateX - 1 && x != gateX + 1) {
-                world.getBlockAt(x, barrierY, z2).setType(Material.BARRIER);
+
+            for (int by = barrierY; by < barrierY + 4; by++) {
+                world.getBlockAt(x, by, z1).setType(Material.BARRIER);
+                world.getBlockAt(x, by, z2).setType(Material.BARRIER);
             }
         }
         for (int z = z1 + 1; z < z2; z++) {
             world.getBlockAt(x1, y, z).setType(fenceMaterial);
-            world.getBlockAt(x1, barrierY, z).setType(Material.BARRIER);
-
             world.getBlockAt(x2, y, z).setType(fenceMaterial);
-            world.getBlockAt(x2, barrierY, z).setType(Material.BARRIER);
+
+            for (int by = barrierY; by < barrierY + 4; by++) {
+                world.getBlockAt(x1, by, z).setType(Material.BARRIER);
+                world.getBlockAt(x2, by, z).setType(Material.BARRIER);
+            }
         }
-
-        // Add barriers above gate and lantern spots
-        world.getBlockAt(gateX, barrierY + 1, z2).setType(Material.BARRIER);
-        world.getBlockAt(gateX - 1, barrierY + 1, z2).setType(Material.BARRIER);
-        world.getBlockAt(gateX + 1, barrierY + 1, z2).setType(Material.BARRIER);
-
-        // Add gate at front center
-        world.getBlockAt(gateX, y, z2).setType(gateMaterial);
 
         // Build central path from spawn to back
         Material pathMat = Material.matchMaterial(

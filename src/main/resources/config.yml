@@ -34,7 +34,6 @@ plantations:
       width: 17
       depth: 15
       fence_material: OAK_FENCE
-      gate_material: OAK_FENCE_GATE
     spacing: 20
     grid:
       rows: 10

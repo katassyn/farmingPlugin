@@ -11,6 +11,7 @@ import org.maks.farmingPlugin.FarmingPlugin;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Arrays;
 
 public class MaterialManager {
     private final FarmingPlugin plugin;
@@ -73,7 +74,7 @@ public class MaterialManager {
         if (materialId != null && materialId.startsWith("farmer_")) {
             String[] parts = materialId.substring(7).split("_");
             if (parts.length >= 2) {
-                String typeId = parts[0] + "_" + parts[1];
+                String typeId = String.join("_", Arrays.copyOf(parts, parts.length - 1));
                 return MaterialType.fromId(typeId);
             }
         }
