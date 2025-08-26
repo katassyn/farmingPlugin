@@ -9,10 +9,49 @@ database:
   password: ""
 
 # Economy settings
+# Economy settings
 economy:
   enabled: true
-  
-# Fruit prices (in-game currency)
+npc:
+  enabled: true
+  temporary_permission_command: "npcmd add plantation.use plantation"
+# Teleportation settings
+teleport:
+  require_level: true
+  minimum_level: 85
+  cooldown_seconds: 5
+  require_permission: true
+  permission: "plantation.use"
+
+plantations:
+  world: world
+  base:
+    origin:
+      x: 1000
+      y: 100
+      z: 1000
+    plot:
+      width: 17
+      height: 15
+      depth: 16
+      fence_material: OAK_FENCE
+      gate_material: OAK_FENCE_GATE
+    spacing: 20
+    grid:
+      rows: 10
+      cols: 10
+  # Protection settings
+  protection:
+    block_build: true
+    block_pvp: false
+    block_farm_blocks: true
+  # Hologram settings
+  holograms:
+    enabled: true
+    update_interval: 30 # seconds  # Drop settings
+  drop:
+    radius: 0.6
+
 fruits:
   sweet_berries:
     display_name: "&dSweet Berries"
@@ -36,60 +75,21 @@ fruits:
     display_name: "&eDesert Golden Date"
     sell_price: 500000
 
-# Teleportation settings
-teleport:
-  require_level: true
-  minimum_level: 85
-  cooldown_seconds: 5
-  require_permission: true
-  permission: "plantation.use"
-  
-# NPC Integration (for Citizens/NPCMD)
-npc:
-  enabled: true
-  temporary_permission_command: "npcmd add plantation.use plantation"
-  
-# Plantation settings
-plantations:
-  world: world
-  base:
-    origin:
-      x: 0
-      y: 100
-      z: 0
-    plot:
-      width: 16
-      depth: 16
-      fence_material: OAK_FENCE
-      gate_material: OAK_FENCE_GATE
-    spacing: 20
-    grid:
-      rows: 10
-      cols: 10
-      
-  # Protection settings
-  protection:
-    block_build: true
-    block_pvp: false
-    block_farm_blocks: true
-    
-  # Hologram settings
-  holograms:
-    enabled: true
-    update_interval: 30 # seconds
-
+# Starter kit for new players
+starter_kit:
+  enabled: false
 
 # Auto-save settings
 auto_save:
   enabled: true
   interval_minutes: 5
 
-# Debug mode
-debug: false
-
 # Metrics
 metrics:
   enabled: true
+
+# Debug mode
+debug: false
 
 # --- PLANTATION LAYOUT & WORLD ---
 plantation:
