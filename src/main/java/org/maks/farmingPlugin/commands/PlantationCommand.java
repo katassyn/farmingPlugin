@@ -15,6 +15,7 @@ import org.maks.farmingPlugin.farms.FarmInstance;
 import org.maks.farmingPlugin.farms.FarmType;
 import org.maks.farmingPlugin.gui.PlantationGUI;
 import org.maks.farmingPlugin.gui.PlayerSettingsGUI;
+import org.maks.farmingPlugin.gui.QuickSellGUI;
 import org.maks.farmingPlugin.materials.MaterialType;
 import org.maks.farmingPlugin.managers.PlantationAreaManager;
 
@@ -54,6 +55,7 @@ public class PlantationCommand implements CommandExecutor, TabCompleter {
             case "stats", "statistics" -> showDetailedStats(player);
             case "list" -> listPlayerFarms(player);
             case "settings" -> openSettingsGUI(player);
+            case "quicksell", "sell" -> openQuickSellGUI(player);
             case "help" -> sendHelpMessage(player);
             
             // Admin commands
@@ -297,6 +299,11 @@ public class PlantationCommand implements CommandExecutor, TabCompleter {
     private void openSettingsGUI(Player player) {
         PlayerSettingsGUI settingsGui = new PlayerSettingsGUI(plugin, player);
         player.openInventory(settingsGui.getInventory());
+    }
+
+    private void openQuickSellGUI(Player player) {
+        QuickSellGUI sellGui = new QuickSellGUI(plugin, player);
+        player.openInventory(sellGui.getInventory());
     }
 
     private void reloadPlugin(Player player) {

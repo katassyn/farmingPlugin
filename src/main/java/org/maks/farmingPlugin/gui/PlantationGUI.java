@@ -11,6 +11,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.maks.farmingPlugin.FarmingPlugin;
 import org.maks.farmingPlugin.farms.FarmInstance;
 import org.maks.farmingPlugin.farms.MaterialDrop;
+import org.maks.farmingPlugin.fruits.FruitType;
 import org.maks.farmingPlugin.materials.MaterialManager;
 import org.maks.farmingPlugin.materials.MaterialType;
 
@@ -39,6 +40,7 @@ public class PlantationGUI implements InventoryHolder {
 
     private void setupGUI() {
         fillBorders();
+        addFarmDisplay();
         addFarmInfo();
         addStoredMaterials();
         addControlButtons();
@@ -58,95 +60,118 @@ public class PlantationGUI implements InventoryHolder {
         }
     }
 
+    private void addFarmDisplay() {
+        // Show the actual farm block in the center top
+        ItemStack farmBlock = new ItemStack(farmInstance.getFarmType().getBlockType());
+        ItemMeta farmMeta = farmBlock.getItemMeta();
+        
+        if (farmMeta != null) {
+            farmMeta.setDisplayName(ChatColor.GOLD + farmInstance.getFarmType().getDisplayName());
+            
+            List<String> lore = new ArrayList<>();
+            lore.add(ChatColor.GRAY + "Instance #" + ChatColor.WHITE + farmInstance.getInstanceId());
+            lore.add(ChatColor.GRAY + "Level: " + ChatColor.YELLOW + farmInstance.getLevel() + "/10");
+            lore.add("");
+            
+            // Show what fruit this farm produces
+            FruitType fruitType = FruitType.getForFarm(farmInstance.getFarmType());
+            if (fruitType != null) {
+                lore.add(ChatColor.GREEN + "Produces: " + fruitType.getDisplayName());
+                lore.add(ChatColor.GRAY + "Value: " + ChatColor.GOLD + 
+                        plugin.getEconomyManager().formatMoney(fruitType.getSellPrice()) + " each");
+            }
+            
+            farmMeta.setLore(lore);
+            farmBlock.setItemMeta(farmMeta);
+        }
+        
+        inventory.setItem(4, farmBlock);
+    }
+
     private void addFarmInfo() {
         List<String> lore = new ArrayList<>();
-        lore.add(ChatColor.GRAY + "Farm Type: " + ChatColor.WHITE + farmInstance.getFarmType().getDisplayName());
-        lore.add(ChatColor.GRAY + "Instance: " + ChatColor.WHITE + farmInstance.getInstanceId());
-        lore.add(ChatColor.GRAY + "Level: " + ChatColor.WHITE + farmInstance.getLevel());
-        lore.add(ChatColor.GRAY + "Efficiency: " + ChatColor.WHITE + farmInstance.getEfficiency());
-        lore.add(" ");
-
+        
+        // Harvest status
         if (farmInstance.isReadyForHarvest()) {
-            lore.add(ChatColor.GREEN + "✓ Ready for harvest!");
+            lore.add(ChatColor.GREEN + "✔ Ready for harvest!");
+            lore.add(ChatColor.GRAY + "Right-click the farm to collect!");
         } else {
             long timeLeft = farmInstance.getTimeUntilNextHarvest();
             String timeString = formatTime(timeLeft);
             lore.add(ChatColor.YELLOW + "⏰ Next harvest in: " + timeString);
+            
+            // Progress bar
+            double progress = farmInstance.getHarvestProgress();
+            int filledBars = (int) (progress / 10);
+            StringBuilder progressBar = new StringBuilder(ChatColor.GREEN + "[");
+            for (int i = 0; i < 10; i++) {
+                if (i < filledBars) {
+                    progressBar.append("■");
+                } else {
+                    progressBar.append(ChatColor.GRAY).append("□").append(ChatColor.GREEN);
+                }
+            }
+            progressBar.append(ChatColor.GREEN + "] " + ChatColor.WHITE + String.format("%.1f%%", progress));
+            lore.add(progressBar.toString());
         }
+        
+        lore.add("");
+        lore.add(ChatColor.GRAY + "Total Harvests: " + ChatColor.WHITE + farmInstance.getTotalHarvests());
+        lore.add(ChatColor.GRAY + "Experience: " + ChatColor.AQUA + farmInstance.getExp() + 
+                " / " + (farmInstance.getLevel() * 100 + (farmInstance.getLevel() - 1) * 50));
+        lore.add(ChatColor.GRAY + "Efficiency: " + ChatColor.GREEN + farmInstance.getEfficiency() + "x");
 
-        lore.add(" ");
-        lore.add(ChatColor.GRAY + "Storage: " + ChatColor.WHITE + farmInstance.getTotalStoredItems() +
-                 "/" + farmInstance.getFarmType().getStorageLimit());
-
-        ItemStack infoItem = createItem(farmInstance.getFarmType().getBlockType(),
-                                      ChatColor.GOLD + "Farm Information", lore);
-        inventory.setItem(4, infoItem);
+        ItemStack infoItem = createItem(Material.CLOCK,
+                ChatColor.GOLD + "Farm Status", lore);
+        inventory.setItem(13, infoItem);
     }
 
     private void addStoredMaterials() {
-        Map<String, Integer> storedMaterials = farmInstance.getStoredMaterials();
-        MaterialManager materialManager = plugin.getMaterialManager();
-
-        int slot = 19;
-        for (Map.Entry<String, Integer> entry : storedMaterials.entrySet()) {
-            if (slot >= 35) break;
-
-            String materialKey = entry.getKey();
-            int amount = entry.getValue();
-
-            String[] parts = materialKey.split("_tier_");
-            if (parts.length == 2) {
-                MaterialType materialType = MaterialType.fromId(parts[0]);
-                int tier = Integer.parseInt(parts[1]);
-
-                if (materialType != null) {
-                    ItemStack materialItem = materialManager.createMaterial(materialType, tier, amount);
-                    ItemMeta meta = materialItem.getItemMeta();
-
-                    if (meta != null) {
-                        List<String> lore = new ArrayList<>(meta.getLore());
-                        lore.add(" ");
-                        lore.add(ChatColor.GRAY + "Stored: " + ChatColor.WHITE + amount);
-                        meta.setLore(lore);
-                        materialItem.setItemMeta(meta);
-                    }
-
-                    inventory.setItem(slot, materialItem);
-                    slot++;
-                    if (slot % 9 == 8) slot += 2;
-                }
-            }
+        // This section shows recently dropped special materials (for reference)
+        ItemStack materialsInfo = createItem(Material.CHEST,
+            ChatColor.YELLOW + "Special Drops Info", null);
+        ItemMeta meta = materialsInfo.getItemMeta();
+        
+        List<String> lore = new ArrayList<>();
+        lore.add(ChatColor.GRAY + "Rare materials can drop");
+        lore.add(ChatColor.GRAY + "during harvests!");
+        lore.add("");
+        lore.add(ChatColor.GOLD + "Possible Drops:");
+        
+        List<MaterialDrop> drops = plugin.getPlantationManager().getFarmDrops(farmInstance.getFarmType());
+        for (MaterialDrop drop : drops) {
+            double chance = drop.getRate() * (1.0 + (farmInstance.getLevel() - 1) * 0.2);
+            lore.add(ChatColor.GRAY + "• " + drop.getMaterialType().getDisplayName() + 
+                    " T" + drop.getTier() + ChatColor.DARK_GRAY + " (" + 
+                    String.format("%.1f%%", chance) + ")");
         }
+        
+        meta.setLore(lore);
+        materialsInfo.setItemMeta(meta);
+        inventory.setItem(31, materialsInfo);
     }
 
     private void addControlButtons() {
-        // Auto-collect toggle
-        List<String> autoLore = new ArrayList<>();
-        autoLore.add(ChatColor.GRAY + "Toggle auto-collect for this farm");
-        autoLore.add(ChatColor.GRAY + "Currently: " + (farmInstance.isAutoCollectEnabled() ?
-                ChatColor.GREEN + "Enabled" : ChatColor.RED + "Disabled"));
-        ItemStack autoButton = createItem(Material.HOPPER, ChatColor.YELLOW + "Auto-Collect", autoLore);
-        inventory.setItem(45, autoButton);
-
         // Drop rates
         List<String> dropRatesLore = new ArrayList<>();
-        dropRatesLore.add(ChatColor.GRAY + "Click to view drop rates");
-        dropRatesLore.add(ChatColor.GRAY + "for this farm type");
+        dropRatesLore.add(ChatColor.GRAY + "Click to view all");
+        dropRatesLore.add(ChatColor.GRAY + "drop rates for this farm");
         ItemStack dropRatesButton = createItem(Material.KNOWLEDGE_BOOK,
                                              ChatColor.BLUE + "Drop Rates", dropRatesLore);
         inventory.setItem(47, dropRatesButton);
 
-        // Collect all
-        List<String> collectLore = new ArrayList<>();
-        collectLore.add(ChatColor.GRAY + "Click to drop all materials");
-        collectLore.add(ChatColor.GRAY + "on the ground");
-        ItemStack collectButton = createItem(Material.HOPPER,
-                                           ChatColor.GREEN + "Collect All", collectLore);
-        inventory.setItem(49, collectButton);
+        // Quick Sell
+        List<String> sellLore = new ArrayList<>();
+        sellLore.add(ChatColor.GRAY + "Open the Quick Sell menu");
+        sellLore.add(ChatColor.GRAY + "to sell your fruits!");
+        ItemStack sellButton = createItem(Material.EMERALD,
+                                        ChatColor.GREEN + "Quick Sell", sellLore);
+        inventory.setItem(49, sellButton);
 
         // Upgrade farm
         List<String> upgradeLore = new ArrayList<>();
         upgradeLore.add(ChatColor.GRAY + "Click to upgrade this farm");
+        upgradeLore.add(ChatColor.GRAY + "Current Level: " + ChatColor.YELLOW + farmInstance.getLevel());
         ItemStack upgradeButton = createItem(Material.EXPERIENCE_BOTTLE,
                                            ChatColor.YELLOW + "Upgrade Farm", upgradeLore);
         inventory.setItem(51, upgradeButton);
@@ -154,6 +179,7 @@ public class PlantationGUI implements InventoryHolder {
         // Statistics
         List<String> statsLore = new ArrayList<>();
         statsLore.add(ChatColor.GRAY + "View detailed statistics");
+        statsLore.add(ChatColor.GRAY + "for this farm");
         ItemStack statsButton = createItem(Material.BOOK, ChatColor.AQUA + "Statistics", statsLore);
         inventory.setItem(46, statsButton);
 
@@ -163,61 +189,57 @@ public class PlantationGUI implements InventoryHolder {
         ItemStack settingsButton = createItem(Material.COMPARATOR,
                                              ChatColor.LIGHT_PURPLE + "Settings", settingsLore);
         inventory.setItem(52, settingsButton);
-    }
-
-    public void collectAllMaterials() {
-        MaterialManager materialManager = plugin.getMaterialManager();
-        Map<String, Integer> storedMaterials = farmInstance.getStoredMaterials();
-
-        int collected = 0;
-        for (Map.Entry<String, Integer> entry : storedMaterials.entrySet()) {
-            String materialKey = entry.getKey();
-            int amount = entry.getValue();
-
-            String[] parts = materialKey.split("_tier_");
-            if (parts.length == 2) {
-                MaterialType materialType = MaterialType.fromId(parts[0]);
-                int tier = Integer.parseInt(parts[1]);
-
-                if (materialType != null) {
-                    ItemStack materialItem = materialManager.createMaterial(materialType, tier, amount);
-
-                    player.getWorld().dropItem(player.getLocation(), materialItem);
-                    collected += amount;
-                }
-            }
-        }
-
-        if (collected > 0) {
-            farmInstance.clearStoredMaterials();
-            plugin.getPlantationManager().savePlayerData(player.getUniqueId());
-
-            player.sendMessage(ChatColor.GREEN + "Dropped " + collected + " materials on the ground!");
-            refresh();
-        } else {
-            player.sendMessage(ChatColor.RED + "No materials to collect!");
-        }
+        
+        // Help/Info
+        List<String> helpLore = new ArrayList<>();
+        helpLore.add(ChatColor.GRAY + "How farming works:");
+        helpLore.add(ChatColor.GRAY + "• Wait for harvest timer");
+        helpLore.add(ChatColor.GRAY + "• Right-click farm block");
+        helpLore.add(ChatColor.GRAY + "• Collect fruits to sell");
+        helpLore.add(ChatColor.GRAY + "• Rare materials drop sometimes");
+        ItemStack helpButton = createItem(Material.PAPER,
+                                        ChatColor.LIGHT_PURPLE + "Help", helpLore);
+        inventory.setItem(53, helpButton);
     }
 
     public void showDropRates() {
         player.closeInventory();
         
         List<MaterialDrop> drops = plugin.getPlantationManager().getFarmDrops(farmInstance.getFarmType());
+        FruitType fruitType = FruitType.getForFarm(farmInstance.getFarmType());
         
         player.sendMessage(ChatColor.GOLD + "=== Drop Rates for " + farmInstance.getFarmType().getDisplayName() + " ===");
-        player.sendMessage(ChatColor.GRAY + "Level " + farmInstance.getLevel() + " | Quality Bonus: " + 
-                         String.format("%.0f%%", (farmInstance.getQualityModifier() - 1) * 100));
+        player.sendMessage(ChatColor.GRAY + "Level " + farmInstance.getLevel() + 
+                         " | Efficiency: " + farmInstance.getEfficiency() + "x");
         player.sendMessage("");
+        
+        // Show fruit drops (common)
+        player.sendMessage(ChatColor.GREEN + "Common Drops (Every Harvest):");
+        if (fruitType != null) {
+            int baseFruits = 3;
+            int maxFruits = 5;
+            double levelBonus = 1.0 + (farmInstance.getLevel() - 1) * 0.2;
+            player.sendMessage(ChatColor.GRAY + "• " + fruitType.getDisplayName() + 
+                             ChatColor.WHITE + " x" + (int)(baseFruits * levelBonus) + "-" + 
+                             (int)(maxFruits * levelBonus) + 
+                             ChatColor.GOLD + " ($" + fruitType.getSellPrice() + " each)");
+        }
+        
+        player.sendMessage("");
+        player.sendMessage(ChatColor.YELLOW + "Rare Material Drops:");
         
         for (MaterialDrop drop : drops) {
             String tierRoman = getTierRoman(drop.getTier());
-            double actualRate = drop.getRate() * (1.0 + (farmInstance.getLevel() - 1) * 0.2) * farmInstance.getQualityModifier();
+            double actualRate = drop.getRate() * (1.0 + (farmInstance.getLevel() - 1) * 0.2);
             
             player.sendMessage(ChatColor.GRAY + "• " + ChatColor.WHITE + 
                              drop.getMaterialType().getDisplayName() + " " + tierRoman + 
-                             ChatColor.GRAY + ": " + ChatColor.GREEN + String.format("%.1f%%", actualRate) + 
+                             ChatColor.GRAY + ": " + ChatColor.YELLOW + String.format("%.1f%%", actualRate) + 
                              ChatColor.DARK_GRAY + " (base: " + drop.getRate() + "%)");
         }
+        
+        player.sendMessage("");
+        player.sendMessage(ChatColor.DARK_GRAY + "Note: Rare materials have a cooldown between drops");
     }
     
     public void showStatistics() {
@@ -242,18 +264,6 @@ public class PlantationGUI implements InventoryHolder {
         player.sendMessage(ChatColor.GRAY + "• Quality: " + ChatColor.AQUA + "Level " + stats.get("qualityUpgrade"));
     }
     
-    public void toggleAutoCollect() {
-        farmInstance.setAutoCollectEnabled(!farmInstance.isAutoCollectEnabled());
-        plugin.getDatabaseManager().savePlayerSetting(player.getUniqueId(), 
-                                                     "auto_collect_enabled", 
-                                                     farmInstance.isAutoCollectEnabled());
-        
-        player.sendMessage(ChatColor.YELLOW + "Auto-collect " + 
-                         (farmInstance.isAutoCollectEnabled() ? 
-                          ChatColor.GREEN + "enabled" : ChatColor.RED + "disabled") + 
-                         ChatColor.YELLOW + " for this farm!");
-    }
-
     private String getTierRoman(int tier) {
         return switch (tier) {
             case 1 -> "I";

@@ -266,7 +266,7 @@ public class PlantationAreaManager {
     }
 
     /**
-     * Build the plot structure with decorative elements
+     * Build the plot structure with decorative elements and proper floor
      */
     private void buildPlotStructure(Location origin) {
         if (world == null) return;
@@ -277,19 +277,30 @@ public class PlantationAreaManager {
         int z2 = z1 + plotDepth - 1;
         int y = origin.getBlockY();
 
+        // FIRST: Create the floor - this is critical!
+        for (int x = x1; x <= x2; x++) {
+            for (int z = z1; z <= z2; z++) {
+                // Create solid ground
+                world.getBlockAt(x, y - 1, z).setType(Material.GRASS_BLOCK);
+                // Add dirt layers below for safety
+                world.getBlockAt(x, y - 2, z).setType(Material.DIRT);
+                world.getBlockAt(x, y - 3, z).setType(Material.STONE);
+                
+                // Clear space above
+                world.getBlockAt(x, y, z).setType(Material.AIR);
+                world.getBlockAt(x, y + 1, z).setType(Material.AIR);
+                world.getBlockAt(x, y + 2, z).setType(Material.AIR);
+            }
+        }
+
         // Build fence perimeter
         for (int x = x1; x <= x2; x++) {
             world.getBlockAt(x, y, z1).setType(fenceMaterial);
             world.getBlockAt(x, y, z2).setType(fenceMaterial);
-            // Add grass below fence
-            world.getBlockAt(x, y - 1, z1).setType(Material.GRASS_BLOCK);
-            world.getBlockAt(x, y - 1, z2).setType(Material.GRASS_BLOCK);
         }
         for (int z = z1 + 1; z < z2; z++) {
             world.getBlockAt(x1, y, z).setType(fenceMaterial);
             world.getBlockAt(x2, y, z).setType(fenceMaterial);
-            world.getBlockAt(x1, y - 1, z).setType(Material.GRASS_BLOCK);
-            world.getBlockAt(x2, y - 1, z).setType(Material.GRASS_BLOCK);
         }
         
         // Add gate at front center
@@ -299,11 +310,42 @@ public class PlantationAreaManager {
         // Add decorative path from gate to center
         for (int z = z1 + 1; z < z1 + 4; z++) {
             world.getBlockAt(gateX, y - 1, z).setType(Material.DIRT_PATH);
+            // Also add path on sides
+            if (gateX - 1 >= x1) {
+                world.getBlockAt(gateX - 1, y - 1, z).setType(Material.COARSE_DIRT);
+            }
+            if (gateX + 1 <= x2) {
+                world.getBlockAt(gateX + 1, y - 1, z).setType(Material.COARSE_DIRT);
+            }
         }
         
         // Add some lanterns for ambiance
         world.getBlockAt(gateX - 1, y + 1, z1).setType(Material.LANTERN);
         world.getBlockAt(gateX + 1, y + 1, z1).setType(Material.LANTERN);
+        
+        // Add corner posts with lanterns
+        world.getBlockAt(x1, y + 1, z1).setType(Material.LANTERN);
+        world.getBlockAt(x2, y + 1, z1).setType(Material.LANTERN);
+        world.getBlockAt(x1, y + 1, z2).setType(Material.LANTERN);
+        world.getBlockAt(x2, y + 1, z2).setType(Material.LANTERN);
+        
+        // Add some decorative elements (flowers, tall grass)
+        Random random = new Random();
+        for (int i = 0; i < 8; i++) {
+            int randX = x1 + 1 + random.nextInt(plotWidth - 2);
+            int randZ = z1 + 1 + random.nextInt(plotDepth - 2);
+            
+            // Make sure we don't place on the path
+            if (Math.abs(randX - gateX) <= 1 && randZ <= z1 + 3) {
+                continue;
+            }
+            
+            Block decorBlock = world.getBlockAt(randX, y, randZ);
+            if (decorBlock.getType() == Material.AIR) {
+                Material[] decorations = {Material.DANDELION, Material.POPPY, Material.GRASS, Material.TALL_GRASS};
+                decorBlock.setType(decorations[random.nextInt(decorations.length)]);
+            }
+        }
     }
 
     /**
@@ -389,7 +431,7 @@ public class PlantationAreaManager {
         }
 
         public Location getSpawnPoint() {
-            // Spawn point near the gate
+            // Spawn point near the gate, raised by 1 block for safety
             return origin.clone().add(width / 2.0, 1, 2);
         }
 

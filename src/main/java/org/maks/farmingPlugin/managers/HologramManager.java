@@ -10,20 +10,23 @@ import org.bukkit.scheduler.BukkitRunnable;
 import org.maks.farmingPlugin.FarmingPlugin;
 import org.maks.farmingPlugin.farms.FarmInstance;
 import org.maks.farmingPlugin.farms.FarmType;
+import org.maks.farmingPlugin.fruits.FruitType;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Manages holograms (armor stands) for farm displays
+ * Optimized hologram manager with reduced update frequency
  */
 public class HologramManager {
     
     private final FarmingPlugin plugin;
     private final Map<String, List<ArmorStand>> holograms = new ConcurrentHashMap<>();
+    private final Map<String, Long> lastUpdateTimes = new ConcurrentHashMap<>();
     private final boolean enabled;
     private BukkitRunnable updateTask;
+    private static final long UPDATE_COOLDOWN = 5000; // 5 seconds minimum between updates
 
     public HologramManager(FarmingPlugin plugin) {
         this.plugin = plugin;
@@ -43,6 +46,12 @@ public class HologramManager {
         
         String hologramKey = getHologramKey(farm);
         
+        // Check update cooldown to prevent flickering
+        Long lastUpdate = lastUpdateTimes.get(hologramKey);
+        if (lastUpdate != null && System.currentTimeMillis() - lastUpdate < UPDATE_COOLDOWN) {
+            return; // Skip update if too soon
+        }
+        
         // Remove old hologram if exists
         removeHologram(hologramKey);
         
@@ -51,6 +60,7 @@ public class HologramManager {
         Location baseLocation = farm.getLocation().clone().add(0.5, 2.5, 0.5);
         
         createHologram(hologramKey, baseLocation, lines);
+        lastUpdateTimes.put(hologramKey, System.currentTimeMillis());
     }
 
     /**
@@ -59,37 +69,30 @@ public class HologramManager {
     private List<String> generateHologramLines(FarmInstance farm) {
         List<String> lines = new ArrayList<>();
         
-        // Farm title
-        String titleFormat = plugin.getConfig().getString("plantations.holograms.title", "&e{farm_display}");
-        String title = titleFormat.replace("{farm_display}", farm.getFarmType().getDisplayName());
-        lines.add(ChatColor.translateAlternateColorCodes('&', title));
+        // Farm title with fruit info
+        FruitType fruitType = FruitType.getForFarm(farm.getFarmType());
+        String title = ChatColor.YELLOW + farm.getFarmType().getDisplayName();
+        lines.add(title);
         
         // Instance and level info
         lines.add(ChatColor.GRAY + "Instance #" + farm.getInstanceId() + 
                  " | Level " + farm.getLevel());
         
-        // Storage status
-        int stored = farm.getTotalStoredItems();
-        int max = farm.getFarmType().getStorageLimit();
-        ChatColor storageColor = stored >= max ? ChatColor.RED : 
-                                 stored >= max * 0.75 ? ChatColor.YELLOW : ChatColor.GREEN;
-        lines.add(ChatColor.GRAY + "Storage: " + storageColor + stored + "/" + max);
+        // Fruit production info
+        if (fruitType != null) {
+            lines.add(ChatColor.GREEN + "Produces: " + fruitType.getDisplayName());
+        }
         
         // Growth status
         if (farm.isReadyForHarvest()) {
-            String readyFormat = plugin.getConfig().getString("plantations.holograms.ready", 
-                                                             "&a&lREADY! &7Click to collect");
-            lines.add(ChatColor.translateAlternateColorCodes('&', readyFormat));
+            lines.add(ChatColor.GREEN + ChatColor.BOLD + "✔ READY TO HARVEST!");
         } else {
             long timeLeft = farm.getTimeUntilNextHarvest();
             String timeString = formatTime(timeLeft);
-            String runningFormat = plugin.getConfig().getString("plantations.holograms.running", 
-                                                               "&7Next: &a{time_left}");
-            String running = runningFormat.replace("{time_left}", timeString);
-            lines.add(ChatColor.translateAlternateColorCodes('&', running));
+            lines.add(ChatColor.YELLOW + "Next: " + ChatColor.WHITE + timeString);
         }
         
-        // Efficiency bonus
+        // Efficiency if upgraded
         if (farm.getEfficiency() > 1) {
             lines.add(ChatColor.AQUA + "⚡ Efficiency: " + farm.getEfficiency() + "x");
         }
@@ -138,6 +141,7 @@ public class HologramManager {
                 }
             }
         }
+        lastUpdateTimes.remove(key);
     }
 
     /**
@@ -163,12 +167,13 @@ public class HologramManager {
                     }
                 }
                 iterator.remove();
+                lastUpdateTimes.remove(entry.getKey());
             }
         }
     }
 
     /**
-     * Update all holograms for online players
+     * Update all holograms for online players (with smart updates)
      */
     public void updateAllHolograms() {
         for (Player player : Bukkit.getOnlinePlayers()) {
@@ -176,14 +181,35 @@ public class HologramManager {
             
             for (FarmInstance farm : farms) {
                 if (farm.getLocation() != null) {
-                    updateHologram(farm);
+                    String key = getHologramKey(farm);
+                    
+                    // Only update if hologram doesn't exist or needs updating
+                    boolean needsUpdate = false;
+                    
+                    if (!holograms.containsKey(key)) {
+                        needsUpdate = true; // Hologram doesn't exist
+                    } else {
+                        // Check if content has changed significantly
+                        Long lastUpdate = lastUpdateTimes.get(key);
+                        if (lastUpdate == null || System.currentTimeMillis() - lastUpdate > 30000) {
+                            // Update every 30 seconds at most
+                            needsUpdate = true;
+                        } else if (farm.isReadyForHarvest()) {
+                            // Always update when ready for harvest
+                            needsUpdate = true;
+                        }
+                    }
+                    
+                    if (needsUpdate) {
+                        updateHologram(farm);
+                    }
                 }
             }
         }
     }
 
     /**
-     * Start the hologram update task
+     * Start the hologram update task (reduced frequency)
      */
     private void startUpdateTask() {
         updateTask = new BukkitRunnable() {
@@ -193,8 +219,8 @@ public class HologramManager {
             }
         };
         
-        // Update every 5 seconds
-        updateTask.runTaskTimer(plugin, 100L, 100L);
+        // Update every 30 seconds instead of every 5
+        updateTask.runTaskTimer(plugin, 100L, 600L);
     }
 
     /**
@@ -215,6 +241,7 @@ public class HologramManager {
         }
         
         holograms.clear();
+        lastUpdateTimes.clear();
     }
 
     /**
@@ -265,7 +292,7 @@ public class HologramManager {
     public void showHarvestAnimation(Location location, int itemCount) {
         if (!enabled) return;
         
-        String text = "&a&l+" + itemCount + " Items Harvested!";
+        String text = "&a&l+" + itemCount + " Fruits Harvested!";
         showFloatingText(location, text, 2000);
         
         // Particle effect
@@ -324,45 +351,5 @@ public class HologramManager {
      */
     public boolean hasHologram(FarmInstance farm) {
         return holograms.containsKey(getHologramKey(farm));
-    }
-
-    /**
-     * Get nearby players to a location
-     */
-    private List<Player> getNearbyPlayers(Location location, double radius) {
-        List<Player> nearby = new ArrayList<>();
-        double radiusSquared = radius * radius;
-        
-        for (Player player : location.getWorld().getPlayers()) {
-            if (player.getLocation().distanceSquared(location) <= radiusSquared) {
-                nearby.add(player);
-            }
-        }
-        
-        return nearby;
-    }
-
-    /**
-     * Update hologram visibility based on player distance
-     */
-    public void updateHologramVisibility() {
-        double viewDistance = 32.0; // Distance at which holograms are visible
-        
-        for (Map.Entry<String, List<ArmorStand>> entry : holograms.entrySet()) {
-            List<ArmorStand> stands = entry.getValue();
-            if (stands.isEmpty()) continue;
-            
-            ArmorStand firstStand = stands.get(0);
-            if (firstStand == null || !firstStand.isValid()) continue;
-            
-            List<Player> nearbyPlayers = getNearbyPlayers(firstStand.getLocation(), viewDistance);
-            boolean shouldBeVisible = !nearbyPlayers.isEmpty();
-            
-            for (ArmorStand stand : stands) {
-                if (stand != null && stand.isValid()) {
-                    stand.setCustomNameVisible(shouldBeVisible);
-                }
-            }
-        }
     }
 }

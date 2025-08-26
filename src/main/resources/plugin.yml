@@ -1,14 +1,36 @@
-name: farmingPlugin
-version: '1.0-SNAPSHOT'
+name: FarmingPlugin
+version: 1.0.0
 main: org.maks.farmingPlugin.FarmingPlugin
-api-version: '1.20'
-depend: [Vault]
-permissions:
-  plantation.access:
-    description: Access to plantation system
-    default: true
+api-version: 1.20
+author: Maks
+description: MMO RPG Farming System with fruits and rare materials
+softdepend: [Vault]
+
 commands:
   plantation:
     description: Main plantation command
-    usage: /plantation
+    usage: /<command> [subcommand]
+    aliases: [farm, plant, p]
     permission: plantation.access
+    permission-message: You don't have permission to use plantations!
+
+permissions:
+  plantation.*:
+    description: All plantation permissions
+    default: op
+    children:
+      plantation.access: true
+      plantation.admin: true
+      plantation.admin.build: true
+  
+  plantation.access:
+    description: Basic access to plantation features
+    default: true
+  
+  plantation.admin:
+    description: Admin commands and features
+    default: op
+  
+  plantation.admin.build:
+    description: Build on other players' plantations
+    default: op
