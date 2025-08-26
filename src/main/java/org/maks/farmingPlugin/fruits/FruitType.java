@@ -6,85 +6,60 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.ChatColor;
+import org.bukkit.configuration.ConfigurationSection;
+import org.maks.farmingPlugin.FarmingPlugin;
+
 import java.util.ArrayList;
 import java.util.List;
 
 public enum FruitType {
-    SWEET_BERRIES("sweet_berries", "&dSweet Berries", Material.SWEET_BERRIES, 50000L,
-        new String[]{
-            "&7Fresh and juicy berries",
-            "&7harvested from magical bushes",
-            "",
-            "&e⚡ Quick Sell Value: &6$50,000",
-            "&8Right-click to eat!"
-        }),
-    
-    GOLDEN_MELON("golden_melon", "&6Golden Melon Slice", Material.GLISTERING_MELON_SLICE, 75000L,
-        new String[]{
-            "&7A shimmering slice of",
-            "&7enchanted melon",
-            "",
-            "&e⚡ Quick Sell Value: &6$75,000",
-            "&8Blessed by the sun"
-        }),
-    
-    MYSTIC_MUSHROOM("mystic_mushroom", "&5Mystic Mushroom", Material.RED_MUSHROOM, 100000L,
-        new String[]{
-            "&7A rare fungus from",
-            "&7the deepest caverns",
-            "",
-            "&e⚡ Quick Sell Value: &6$100,000",
-            "&8Glows in the dark!"
-        }),
-    
-    ENCHANTED_PUMPKIN("enchanted_pumpkin", "&6Enchanted Pumpkin Slice", Material.PUMPKIN_PIE, 125000L,
-        new String[]{
-            "&7Magical pumpkin infused",
-            "&7with autumn essence",
-            "",
-            "&e⚡ Quick Sell Value: &6$125,000",
-            "&8Tastes like fall!"
-        }),
-    
-    ETHEREAL_FLOWER("ethereal_flower", "&dEthereal Blossom", Material.PINK_TULIP, 200000L,
-        new String[]{
-            "&7A mystical flower that",
-            "&7never wilts or fades",
-            "",
-            "&e⚡ Quick Sell Value: &6$200,000",
-            "&8&oWhispers ancient secrets"
-        }),
-    
-    ANCIENT_SEED("ancient_seed", "&2Ancient Mangrove Seed", Material.MANGROVE_PROPAGULE, 350000L,
-        new String[]{
-            "&7Seeds from the oldest",
-            "&7trees in existence",
-            "",
-            "&e⚡ Quick Sell Value: &6$350,000",
-            "&8&oContains primordial power"
-        }),
-    
-    DESERT_DATE("desert_date", "&eDesert Golden Date", Material.GOLDEN_APPLE, 500000L,
-        new String[]{
-            "&7Legendary fruit from",
-            "&7the eternal oasis",
-            "",
-            "&e⚡ Quick Sell Value: &6$500,000",
-            "&8&oBlessed by desert spirits"
-        });
+    SWEET_BERRIES("sweet_berries", Material.SWEET_BERRIES),
+    GOLDEN_MELON("golden_melon", Material.GLISTERING_MELON_SLICE),
+    MYSTIC_MUSHROOM("mystic_mushroom", Material.RED_MUSHROOM),
+    ENCHANTED_PUMPKIN("enchanted_pumpkin", Material.PUMPKIN_PIE),
+    ETHEREAL_FLOWER("ethereal_flower", Material.PINK_TULIP),
+    ANCIENT_SEED("ancient_seed", Material.MANGROVE_PROPAGULE),
+    DESERT_DATE("desert_date", Material.GOLDEN_APPLE);
 
     private final String id;
-    private final String displayName;
     private final Material material;
-    private final long sellPrice;
-    private final String[] lore;
+    private String displayName;
+    private long sellPrice;
+    private static boolean initialized = false;
 
-    FruitType(String id, String displayName, Material material, long sellPrice, String[] lore) {
+    FruitType(String id, Material material) {
         this.id = id;
-        this.displayName = displayName;
         this.material = material;
-        this.sellPrice = sellPrice;
-        this.lore = lore;
+        // Default values - will be overridden by config
+        this.displayName = id.replace("_", " ");
+        this.sellPrice = 50000L;
+    }
+
+    /**
+     * Initialize fruit values from config
+     */
+    public static void initialize(FarmingPlugin plugin) {
+        if (initialized) return;
+
+        ConfigurationSection fruitsConfig = plugin.getConfig().getConfigurationSection("fruits");
+        if (fruitsConfig == null) {
+            plugin.getLogger().warning("No fruits configuration found! Using defaults.");
+            return;
+        }
+
+        for (FruitType fruit : values()) {
+            ConfigurationSection fruitSection = fruitsConfig.getConfigurationSection(fruit.id);
+            if (fruitSection != null) {
+                fruit.displayName = ChatColor.translateAlternateColorCodes('&',
+                    fruitSection.getString("display_name", fruit.displayName));
+                fruit.sellPrice = fruitSection.getLong("sell_price", fruit.sellPrice);
+            } else {
+                plugin.getLogger().warning("No config for fruit: " + fruit.id);
+            }
+        }
+
+        initialized = true;
+        plugin.getLogger().info("Loaded " + values().length + " fruit types from config");
     }
 
     public String getId() {
@@ -92,7 +67,7 @@ public enum FruitType {
     }
 
     public String getDisplayName() {
-        return ChatColor.translateAlternateColorCodes('&', displayName);
+        return displayName;
     }
 
     public Material getMaterial() {
@@ -106,23 +81,27 @@ public enum FruitType {
     public ItemStack createItem(int amount) {
         ItemStack item = new ItemStack(material, amount);
         ItemMeta meta = item.getItemMeta();
-        
+
         if (meta != null) {
             meta.setDisplayName(getDisplayName());
-            
+
             List<String> loreList = new ArrayList<>();
-            for (String line : lore) {
-                loreList.add(ChatColor.translateAlternateColorCodes('&', line));
-            }
+            loreList.add(ChatColor.GRAY + "Fresh farming produce!");
+            loreList.add("");
+            loreList.add(ChatColor.YELLOW + "⚡ Quick Sell Value:");
+            loreList.add(ChatColor.GOLD + "$" + String.format("%,d", sellPrice) + " each");
+            loreList.add("");
+            loreList.add(ChatColor.DARK_GRAY + "Right-click to eat!");
+
             meta.setLore(loreList);
-            
+
             // Add enchantment glow effect
             meta.addEnchant(Enchantment.DURABILITY, 1, true);
             meta.addItemFlags(ItemFlag.HIDE_ENCHANTS, ItemFlag.HIDE_ATTRIBUTES);
-            
+
             item.setItemMeta(meta);
         }
-        
+
         return item;
     }
 
@@ -159,3 +138,4 @@ public enum FruitType {
         }
     }
 }
+

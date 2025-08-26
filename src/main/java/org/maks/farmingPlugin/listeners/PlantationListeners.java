@@ -27,6 +27,7 @@ import org.maks.farmingPlugin.gui.PlantationGUI;
 import org.maks.farmingPlugin.gui.FarmUpgradeGUI;
 import org.maks.farmingPlugin.gui.PlayerSettingsGUI;
 import org.maks.farmingPlugin.gui.QuickSellGUI;
+import org.maks.farmingPlugin.gui.PlantationTeleportGUI;
 import org.maks.farmingPlugin.managers.PlantationAreaManager;
 
 import java.util.*;
@@ -50,15 +51,11 @@ public class PlantationListeners implements Listener {
         plugin.getPlantationManager().loadPlayerData(uuid);
         plugin.getOfflineGrowthManager().onPlayerJoin(uuid);
         
-        // Check for first join
+        // Check for first join (don't give items)
         if (!plugin.getDatabaseManager().loadPlayerPlot(uuid).isPresent()) {
             player.sendMessage(ChatColor.GREEN + "Welcome to the Farming System!");
-            player.sendMessage(ChatColor.YELLOW + "Use /plantation to visit your farm area!");
-            
-            // Give starter materials if configured
-            if (plugin.getConfig().getBoolean("starter_kit.enabled", true)) {
-                giveStarterKit(player);
-            }
+            player.sendMessage(ChatColor.YELLOW + "Visit the Farm NPC to access your plantation!");
+            player.sendMessage(ChatColor.YELLOW + "You must be level 85 to start farming!");
         } else {
             // Check farms that need attention
             checkFarmsNeedingAttention(player);
@@ -95,7 +92,7 @@ public class PlantationListeners implements Listener {
             return;
         }
         
-        if (!player.hasPermission("plantation.access")) {
+        if (!player.hasPermission("plantation.use")) {
             return;
         }
 
@@ -200,6 +197,9 @@ public class PlantationListeners implements Listener {
             handleSettingsGUIClick(player, settingsGui, event);
         } else if (event.getInventory().getHolder() instanceof QuickSellGUI sellGui) {
             handleQuickSellGUIClick(player, sellGui, event);
+        } else if (event.getInventory().getHolder() instanceof PlantationTeleportGUI teleportGui) {
+            event.setCancelled(true);
+            handleTeleportGUIClick(player, teleportGui, event);
         }
     }
 
@@ -319,6 +319,23 @@ public class PlantationListeners implements Listener {
             gui.sellAll();
         } else if (displayName.equals("Close")) {
             gui.returnItems();
+            player.closeInventory();
+        }
+    }
+
+    private void handleTeleportGUIClick(Player player, PlantationTeleportGUI gui, InventoryClickEvent event) {
+        int slot = event.getRawSlot();
+
+        if (slot == 22) {
+            if (gui.canTeleport()) {
+                player.closeInventory();
+                player.performCommand("plantation tp");
+            } else {
+                player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+                int requiredLevel = plugin.getConfig().getInt("teleport.minimum_level", 85);
+                player.sendMessage(ChatColor.RED + "You must be at least level " + requiredLevel + " to teleport!");
+            }
+        } else if (slot == 40) {
             player.closeInventory();
         }
     }

@@ -1,16 +1,55 @@
-# FarmingPlugin Configuration
-# MMO RPG Farming System
+# Farming Plugin Configuration
 
 # Database settings
 database:
   host: localhost
   port: 3306
-  # "name" and "user" keys are also accepted for compatibility
   name: plantation
   user: root
   password: ""
 
-# Plantation world and layout settings
+# Economy settings
+economy:
+  enabled: true
+  
+# Fruit prices (in-game currency)
+fruits:
+  sweet_berries:
+    display_name: "&dSweet Berries"
+    sell_price: 50000
+  golden_melon:
+    display_name: "&6Golden Melon Slice"
+    sell_price: 75000
+  mystic_mushroom:
+    display_name: "&5Mystic Mushroom"
+    sell_price: 100000
+  enchanted_pumpkin:
+    display_name: "&6Enchanted Pumpkin Slice"
+    sell_price: 125000
+  ethereal_flower:
+    display_name: "&dEthereal Blossom"
+    sell_price: 200000
+  ancient_seed:
+    display_name: "&2Ancient Mangrove Seed"
+    sell_price: 350000
+  desert_date:
+    display_name: "&eDesert Golden Date"
+    sell_price: 500000
+
+# Teleportation settings
+teleport:
+  require_level: true
+  minimum_level: 85
+  cooldown_seconds: 5
+  require_permission: true
+  permission: "plantation.use"
+  
+# NPC Integration (for Citizens/NPCMD)
+npc:
+  enabled: true
+  temporary_permission_command: "npcmd add plantation.use plantation"
+  
+# Plantation settings
 plantations:
   world: world
   base:
@@ -20,43 +59,41 @@ plantations:
       z: 0
     plot:
       width: 16
-      height: 16
       depth: 16
       fence_material: OAK_FENCE
       gate_material: OAK_FENCE_GATE
-    spacing: 5
+    spacing: 20
     grid:
       rows: 10
       cols: 10
-  
+      
   # Protection settings
   protection:
     block_build: true
     block_pvp: false
-  
+    
   # Hologram settings
   holograms:
     enabled: true
-    title: "&e{farm_display}"
-    ready: "&a&lREADY! &7Right-click to collect"
-    running: "&7Next: &a{time_left}"
-  
-  # Drop settings
-  drop:
-    radius: 0.6
+    update_interval: 30 # seconds
 
-# Starter kit for new players
+# Starter kit - disable by default
 starter_kit:
-  enabled: true
+  enabled: false
+  items:
+    - material: PLANT_FIBER
+      tier: 1
+      amount: 10
 
 # Auto-save settings
 auto_save:
   enabled: true
   interval_minutes: 5
 
+# Debug mode
+debug: false
+
 # Metrics
 metrics:
   enabled: true
 
-# Debug mode
-debug: false
