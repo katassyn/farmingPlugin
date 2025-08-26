@@ -30,12 +30,11 @@ plantations:
       x: 1000
       y: 100
       z: 1000
-    plot:
-      width: 17
-      height: 15
-      depth: 16
-      fence_material: OAK_FENCE
-      gate_material: OAK_FENCE_GATE
+      plot:
+        width: 17
+        depth: 15
+        fence_material: OAK_FENCE
+        gate_material: OAK_FENCE_GATE
     spacing: 20
     grid:
       rows: 10
@@ -99,7 +98,7 @@ plantation:
     y: 64
     z: 998
   holograms:
-    y_offset: -0.6
+    y_offset: 2.0
   rebuild_on_join: true
 
 # --- TRYB TESTOWY ---
@@ -107,7 +106,7 @@ test_mode:
   enabled: true
   growth_minutes: 1
 
-# (opcjonalnie) materiały pod uprawy/ścieżki
+# (optional) materials for crops/paths
 blocks:
   path: DIRT_PATH
   ground: GRASS_BLOCK

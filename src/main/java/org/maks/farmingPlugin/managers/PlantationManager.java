@@ -578,6 +578,8 @@ public class PlantationManager {
     public long getHarvestIntervalMillis(FarmInstance farm) {
         if (plugin.getConfig().getBoolean("test_mode.enabled", false)) {
             int mins = plugin.getConfig().getInt("test_mode.growth_minutes", 1);
+            plugin.getLogger().info("TEST MODE: Farm " + farm.getFarmType().getId() +
+                                   " will grow in " + mins + " minute(s)");
             return TimeUnit.MINUTES.toMillis(mins);
         }
         return TimeUnit.SECONDS.toMillis(farm.getFarmType().getHarvestSeconds());
