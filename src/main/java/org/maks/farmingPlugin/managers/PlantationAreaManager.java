@@ -25,8 +25,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.*;
 import java.util.UUID;
-import java.util.function.BiFunction;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -382,38 +380,52 @@ public class PlantationAreaManager {
         return result;
     }
 
-    /** Zbuduj layout i postaw "LOCKED" dla nieodblokowanych */
+    /** Build layout and place "LOCKED" signs for farms the player doesn't own */
     public void regeneratePlayerArea(Player player) {
-        World w = Bukkit.getWorld(plugin.getConfig().getString("plantation.world", "world"));
-        int baseX = plugin.getConfig().getInt("plantation.spawn.x");
-        int baseY = plugin.getConfig().getInt("plantation.spawn.y");
-        int baseZ = plugin.getConfig().getInt("plantation.spawn.z");
-
-        if (w == null) {
-            plugin.getLogger().warning("World not found for plantation.world!");
+        if (world == null) {
+            plugin.getLogger().warning("World not found for regeneration!");
             return;
         }
 
-        buildPath(w, baseX, baseY, 998, 989);
-
-        Map<FarmType, List<Location>> anchors = computeAnchors(w, baseY);
-
+        // Ensure area and anchors exist
+        PlantationArea area = getOrCreateArea(player);
         UUID uid = player.getUniqueId();
+
+        Map<FarmType, Map<Integer, Location>> anchors = getAllFarmAnchors(uid);
+
+        // Create a set of owned farm keys for quick lookup
         List<FarmInstance> owned = plugin.getPlantationManager().getPlayerFarms(uid);
         Set<String> ownedKeys = owned.stream()
             .map(fi -> key(fi.getFarmType(), fi.getInstanceId()))
             .collect(Collectors.toSet());
 
-        for (Map.Entry<FarmType, List<Location>> e : anchors.entrySet()) {
-            FarmType type = e.getKey();
-            List<Location> list = e.getValue();
-            for (int i = 0; i < list.size(); i++) {
-                Location loc = list.get(i);
-                String k = key(type, i + 1);
+        // Process each anchor
+        for (Map.Entry<FarmType, Map<Integer, Location>> typeEntry : anchors.entrySet()) {
+            FarmType type = typeEntry.getKey();
+            for (Map.Entry<Integer, Location> instEntry : typeEntry.getValue().entrySet()) {
+                int instanceId = instEntry.getKey();
+                Location loc = instEntry.getValue();
+                String k = key(type, instanceId);
+
+                // Place grass block underneath
+                world.getBlockAt(loc.getBlockX(), loc.getBlockY() - 1, loc.getBlockZ()).setType(Material.GRASS_BLOCK);
+
                 if (ownedKeys.contains(k)) {
+                    // Player owns this farm - place the farm block
+                    placeFarmBlock(loc, type);
+
+                    // Update hologram
+                    FarmInstance farm = plugin.getPlantationManager().getFarmInstance(uid, type, instanceId);
+                    if (farm != null && plugin.getHologramManager() != null) {
+                        plugin.getHologramManager().updateHologram(farm);
+                    }
+                } else if (type == FarmType.BERRY_ORCHARDS ||
+                           plugin.getDatabaseManager().isFarmUnlocked(uid, type.getId())) {
+                    // Farm type unlocked but instance not purchased - show farm block
                     placeFarmBlock(loc, type);
                 } else {
-                    placeLockedSign(loc, type, i + 1);
+                    // Farm type locked - place locked sign
+                    placeLockedSign(loc, type, instanceId);
                 }
             }
         }
@@ -421,59 +433,6 @@ public class PlantationAreaManager {
 
     private String key(FarmType t, int id) {
         return t.getId() + "#" + id;
-    }
-
-    private void buildPath(World w, int x, int y, int zFrom, int zTo) {
-        Material pathMat = Material.matchMaterial(
-            plugin.getConfig().getString("blocks.path", "DIRT_PATH")
-        );
-        if (pathMat == null) pathMat = Material.DIRT_PATH;
-
-        int dz = zFrom <= zTo ? 1 : -1;
-        for (int z = zFrom; z != zTo + dz; z += dz) {
-            Block b = w.getBlockAt(x, y, z);
-            b.setType(pathMat, false);
-        }
-    }
-
-    /** Wylicza dokładne pozycje wg Twoich koordów (Y z configu) */
-    private Map<FarmType, List<Location>> computeAnchors(World w, int y) {
-        Map<FarmType, List<Location>> map = new LinkedHashMap<>();
-
-        Function<int[], Location> L = arr -> new Location(w, arr[0], y, arr[1]);
-        BiFunction<int[], int[], List<Location>> rect6 = (a, b) -> {
-            int x1 = Math.min(a[0], b[0]), x2 = Math.max(a[0], b[0]);
-            int z1 = Math.min(a[1], b[1]), z2 = Math.max(a[1], b[1]);
-            int[] xs = new int[]{x1, x1 + 2, x1 + 4};
-            int[] zs = (z2 - z1 == 2) ? new int[]{z2, z1} : new int[]{z1, z2};
-            return Arrays.asList(
-                L.apply(new int[]{xs[0], zs[0]}),
-                L.apply(new int[]{xs[1], zs[0]}),
-                L.apply(new int[]{xs[2], zs[0]}),
-                L.apply(new int[]{xs[0], zs[1]}),
-                L.apply(new int[]{xs[1], zs[1]}),
-                L.apply(new int[]{xs[2], zs[1]})
-            );
-        };
-        BiFunction<int[], int[], List<Location>> line3 = (a, b) -> {
-            int x1 = Math.min(a[0], b[0]), x2 = Math.max(a[0], b[0]);
-            int z = a[1];
-            return Arrays.asList(
-                L.apply(new int[]{x1, z}),
-                L.apply(new int[]{x1 + 2, z}),
-                L.apply(new int[]{x2, z})
-            );
-        };
-
-        map.put(FarmType.BERRY_ORCHARDS, rect6.apply(new int[]{1010, 997}, new int[]{1014, 995}));
-        map.put(FarmType.MELON_GROVES, rect6.apply(new int[]{1002, 995}, new int[]{1006, 997}));
-        map.put(FarmType.FUNGAL_CAVERNS, rect6.apply(new int[]{1010, 993}, new int[]{1014, 991}));
-        map.put(FarmType.PUMPKIN_PATCHES, rect6.apply(new int[]{1002, 991}, new int[]{1006, 993}));
-        map.put(FarmType.MYSTIC_GARDENS, line3.apply(new int[]{1010, 989}, new int[]{1014, 989}));
-        map.put(FarmType.ANCIENT_MANGROVES, line3.apply(new int[]{1002, 989}, new int[]{1006, 989}));
-        map.put(FarmType.DESERT_SANCTUARIES, Arrays.asList(L.apply(new int[]{1008, 987})));
-
-        return map;
     }
 
     public void placeFarmBlock(Location loc, FarmType type) {
