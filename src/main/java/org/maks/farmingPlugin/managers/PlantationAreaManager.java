@@ -342,7 +342,10 @@ public class PlantationAreaManager {
             
             Block decorBlock = world.getBlockAt(randX, y, randZ);
             if (decorBlock.getType() == Material.AIR) {
-                Material[] decorations = {Material.DANDELION, Material.POPPY, Material.SHORT_GRASS, Material.TALL_GRASS};
+                Material shortGrass = Material.matchMaterial("SHORT_GRASS");
+                Material[] decorations = shortGrass != null
+                        ? new Material[]{Material.DANDELION, Material.POPPY, shortGrass, Material.TALL_GRASS}
+                        : new Material[]{Material.DANDELION, Material.POPPY, Material.TALL_GRASS};
                 decorBlock.setType(decorations[random.nextInt(decorations.length)]);
             }
         }
