@@ -16,6 +16,7 @@ import org.maks.farmingPlugin.farms.FarmType;
 import org.maks.farmingPlugin.gui.PlantationGUI;
 import org.maks.farmingPlugin.gui.PlayerSettingsGUI;
 import org.maks.farmingPlugin.gui.QuickSellGUI;
+import org.maks.farmingPlugin.gui.PlantationTeleportGUI;
 import org.maks.farmingPlugin.materials.MaterialType;
 import org.maks.farmingPlugin.managers.PlantationAreaManager;
 
@@ -37,13 +38,14 @@ public class PlantationCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        if (!player.hasPermission("plantation.access")) {
-            player.sendMessage(ChatColor.RED + "You don't have permission to use plantation commands!");
+        if (!player.hasPermission("plantation.use") && !player.hasPermission("plantation.admin")) {
+            player.sendMessage(ChatColor.RED + "You need to visit the Farm NPC to use this!");
             return true;
         }
 
         if (args.length == 0) {
-            teleportToPlantation(player);
+            PlantationTeleportGUI gui = new PlantationTeleportGUI(plugin, player);
+            player.openInventory(gui.getInventory());
             return true;
         }
 

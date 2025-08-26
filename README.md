@@ -171,7 +171,7 @@ Każda farma może osiągnąć poziom 10:
 
 ## 🔐 Permisje
 
-- `plantation.access` - Dostęp do systemu plantacji
+- `plantation.use` - Dostęp do systemu plantacji
 - `plantation.admin` - Komendy administracyjne
 - `plantation.admin.build` - Budowanie na cudzych plantacjach
 - `plantation.bypass.limit` - Bypass limitów instancji

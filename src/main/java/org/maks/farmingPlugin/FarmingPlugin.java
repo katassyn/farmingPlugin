@@ -7,6 +7,7 @@ import org.maks.farmingPlugin.database.DatabaseManager;
 import org.maks.farmingPlugin.listeners.PlantationListeners;
 import org.maks.farmingPlugin.managers.*;
 import org.maks.farmingPlugin.materials.MaterialManager;
+import org.maks.farmingPlugin.fruits.FruitType;
 
 import java.util.logging.Level;
 
@@ -111,6 +112,11 @@ public final class FarmingPlugin extends JavaPlugin {
     }
 
     private void initializeManagers() throws Exception {
+        // Initialize fruit types from config
+        getLogger().info("Loading fruit types from config...");
+        FruitType.initialize(this);
+        getLogger().info("✔ Fruit types loaded!");
+
         // Material Manager
         getLogger().info("Initializing material system...");
         materialManager = new MaterialManager(this);
