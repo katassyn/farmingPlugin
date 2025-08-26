@@ -24,12 +24,14 @@ public class HologramManager {
     private final Map<String, List<ArmorStand>> holograms = new ConcurrentHashMap<>();
     private final Map<String, Long> lastUpdateTimes = new ConcurrentHashMap<>();
     private final boolean enabled;
+    private final double yOffset;
     private BukkitRunnable updateTask;
     private static final long UPDATE_COOLDOWN = 5000; // 5 seconds minimum between updates
 
     public HologramManager(FarmingPlugin plugin) {
         this.plugin = plugin;
         this.enabled = plugin.getConfig().getBoolean("plantations.holograms.enabled", true);
+        this.yOffset = plugin.getConfig().getDouble("plantation.holograms.y_offset", -0.6);
         
         if (enabled) {
             startUpdateTask();
@@ -56,10 +58,14 @@ public class HologramManager {
         
         // Create new hologram lines
         List<String> lines = generateHologramLines(farm);
-        Location baseLocation = farm.getLocation().clone().add(0.5, 2.5, 0.5);
-        
+        Location baseLocation = holoLoc(farm.getLocation());
+
         createHologram(hologramKey, baseLocation, lines);
         lastUpdateTimes.put(hologramKey, System.currentTimeMillis());
+    }
+
+    private Location holoLoc(Location base) {
+        return base.clone().add(0.5, yOffset, 0.5);
     }
 
     /**
@@ -239,7 +245,7 @@ public class HologramManager {
         if (!enabled) return;
         
         ArmorStand stand = (ArmorStand) location.getWorld().spawnEntity(
-            location.clone().add(0.5, 1, 0.5), EntityType.ARMOR_STAND);
+            holoLoc(location), EntityType.ARMOR_STAND);
         
         stand.setVisible(false);
         stand.setGravity(false);

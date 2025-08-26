@@ -1,10 +1,13 @@
 package org.maks.farmingPlugin.listeners;
 
+import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Sound;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockState;
+import org.bukkit.block.Sign;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -20,6 +23,8 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.NamespacedKey;
+import org.bukkit.persistence.PersistentDataType;
 import org.maks.farmingPlugin.FarmingPlugin;
 import org.maks.farmingPlugin.farms.FarmInstance;
 import org.maks.farmingPlugin.farms.FarmType;
@@ -59,6 +64,12 @@ public class PlantationListeners implements Listener {
         } else {
             // Check farms that need attention
             checkFarmsNeedingAttention(player);
+        }
+
+        if (plugin.getConfig().getBoolean("plantation.rebuild_on_join", true)) {
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                plugin.getPlantationAreaManager().regeneratePlayerArea(event.getPlayer());
+            }, 20L);
         }
     }
 
@@ -175,6 +186,48 @@ public class PlantationListeners implements Listener {
         
         // Update cooldown
         lastInteraction.put(player.getUniqueId(), System.currentTimeMillis());
+    }
+
+    @EventHandler(ignoreCancelled = true, priority = EventPriority.HIGHEST)
+    public void onRightClickLockedSign(PlayerInteractEvent e) {
+        if (e.getAction() != Action.RIGHT_CLICK_BLOCK) return;
+        Block b = e.getClickedBlock();
+        if (b == null) return;
+
+        BlockState st = b.getState();
+        if (!(st instanceof Sign sign)) return;
+
+        var pdc = sign.getPersistentDataContainer();
+        NamespacedKey K_LOCKED = new NamespacedKey(plugin, "locked_farm");
+        NamespacedKey K_TYPE = new NamespacedKey(plugin, "farm_type");
+        NamespacedKey K_ID = new NamespacedKey(plugin, "instance_id");
+
+        if (pdc.getOrDefault(K_LOCKED, PersistentDataType.INTEGER, 0) != 1) return;
+
+        String typeId = pdc.get(K_TYPE, PersistentDataType.STRING);
+        Integer instanceId = pdc.get(K_ID, PersistentDataType.INTEGER);
+        if (typeId == null || instanceId == null) return;
+
+        FarmType type = FarmType.fromId(typeId);
+        if (type == null) return;
+
+        Player player = e.getPlayer();
+        e.setCancelled(true);
+
+        boolean unlocked = plugin.getPlantationManager().attemptUnlock(player, type, instanceId);
+        if (unlocked) {
+            plugin.getPlantationAreaManager().placeFarmBlock(b.getLocation(), type);
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                FarmInstance fi = plugin.getPlantationManager().getFarmInstance(player.getUniqueId(), type, instanceId);
+                if (fi != null && plugin.getHologramManager() != null) {
+                    plugin.getHologramManager().updateHologram(fi);
+                }
+            }, 2L);
+            player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
+        } else {
+            player.sendMessage(ChatColor.RED + "Brakuje wymagań żeby odblokować tę farmę.");
+            player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 1f, 0.8f);
+        }
     }
 
     @EventHandler

@@ -24,6 +24,7 @@ import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
+import java.util.concurrent.TimeUnit;
 
 public class PlantationManager {
     private final FarmingPlugin plugin;
@@ -492,6 +493,43 @@ public class PlantationManager {
         return true;
     }
 
+    public boolean attemptUnlock(Player player, FarmType type, int instanceId) {
+        UUID uid = player.getUniqueId();
+
+        Map<MaterialType, Integer> requirements = unlockRequirements.get(type);
+        if (requirements != null) {
+            for (Map.Entry<MaterialType, Integer> req : requirements.entrySet()) {
+                int have = database.getPlayerMaterialAmount(uid, req.getKey().getId(), 1);
+                if (have < req.getValue()) {
+                    return false;
+                }
+            }
+        }
+
+        if (!plugin.getEconomyManager().hasBalance(uid, type.getUnlockCost())) {
+            return false;
+        }
+
+        if (requirements != null) {
+            for (Map.Entry<MaterialType, Integer> req : requirements.entrySet()) {
+                database.updatePlayerMaterial(uid, req.getKey().getId(), 1, -req.getValue());
+                removeMaterialFromInventory(player, req.getKey(), 1, req.getValue());
+            }
+        }
+
+        plugin.getEconomyManager().withdrawMoney(uid, type.getUnlockCost());
+
+        Location loc = plugin.getPlantationAreaManager().getOrCreateFarmAnchor(uid, type, instanceId);
+        FarmInstance fi = getFarmInstance(uid, type, instanceId);
+        if (fi == null) {
+            createFarmInstance(uid, type, instanceId, loc);
+        }
+        savePlayerData(uid);
+
+        player.sendMessage(ChatColor.GREEN + "Odblokowano: " + type.getDisplayName() + " #" + instanceId);
+        return true;
+    }
+
     private void removeMaterialFromInventory(Player player, MaterialType materialType, int tier, int amount) {
         MaterialManager mm = plugin.getMaterialManager();
         int remaining = amount;
@@ -533,8 +571,16 @@ public class PlantationManager {
         
         // Update stats
         database.updatePlayerStats(playerUuid, "total_farms_created", 1);
-        
+
         return instance;
+    }
+
+    public long getHarvestIntervalMillis(FarmInstance farm) {
+        if (plugin.getConfig().getBoolean("test_mode.enabled", false)) {
+            int mins = plugin.getConfig().getInt("test_mode.growth_minutes", 1);
+            return TimeUnit.MINUTES.toMillis(mins);
+        }
+        return TimeUnit.SECONDS.toMillis(farm.getFarmType().getHarvestSeconds());
     }
 
     /**
