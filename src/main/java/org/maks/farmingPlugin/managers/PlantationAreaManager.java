@@ -98,20 +98,36 @@ public class PlantationAreaManager {
         this.PDC_INSTANCE_ID = new NamespacedKey(plugin, "instance_id");
 
         ConfigurationSection base = plugin.getConfig().getConfigurationSection("plantations.base");
+        if (base == null) {
+            throw new IllegalStateException("Missing 'plantations.base' section in config");
+        }
+
         this.world = Bukkit.getWorld(plugin.getConfig().getString("plantations.world", "world"));
 
         ConfigurationSection originSec = base.getConfigurationSection("origin");
+        if (originSec == null) {
+            throw new IllegalStateException("Missing 'plantations.base.origin' section in config");
+        }
         this.originX = originSec.getInt("x");
         this.originY = originSec.getInt("y");
         this.originZ = originSec.getInt("z");
 
         ConfigurationSection plotSec = base.getConfigurationSection("plot");
-        this.fenceMaterial = Material.valueOf(plotSec.getString("fence_material", "OAK_FENCE"));
-        this.gateMaterial = Material.valueOf(plotSec.getString("gate_material", "OAK_FENCE_GATE"));
+        if (plotSec == null) {
+            plugin.getLogger().warning("Missing 'plantations.base.plot' section in config; using default fence and gate materials.");
+            this.fenceMaterial = Material.OAK_FENCE;
+            this.gateMaterial = Material.OAK_FENCE_GATE;
+        } else {
+            this.fenceMaterial = Material.valueOf(plotSec.getString("fence_material", "OAK_FENCE"));
+            this.gateMaterial = Material.valueOf(plotSec.getString("gate_material", "OAK_FENCE_GATE"));
+        }
 
         this.spacing = base.getInt("spacing");
 
         ConfigurationSection gridSec = base.getConfigurationSection("grid");
+        if (gridSec == null) {
+            throw new IllegalStateException("Missing 'plantations.base.grid' section in config");
+        }
         this.gridRows = gridSec.getInt("rows");
         this.gridCols = gridSec.getInt("cols");
 
