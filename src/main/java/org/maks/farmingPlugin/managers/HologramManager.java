@@ -31,7 +31,7 @@ public class HologramManager {
     public HologramManager(FarmingPlugin plugin) {
         this.plugin = plugin;
         this.enabled = plugin.getConfig().getBoolean("plantations.holograms.enabled", true);
-        this.yOffset = plugin.getConfig().getDouble("plantation.holograms.y_offset", 0.5);
+        this.yOffset = plugin.getConfig().getDouble("plantation.holograms.y_offset", -0.6);
         
         if (enabled) {
             startUpdateTask();
