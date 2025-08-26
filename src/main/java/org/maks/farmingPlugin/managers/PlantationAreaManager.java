@@ -106,7 +106,7 @@ public class PlantationAreaManager {
     private void loadAllPlayerAreas() {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
-                String sql = "SELECT DISTINCT uuid FROM player_plots";
+                String sql = "SELECT DISTINCT uuid FROM farming_player_plots";
                 PreparedStatement stmt = plugin.getDatabaseManager().prepareStatement(sql);
                 ResultSet rs = stmt.executeQuery();
                 
@@ -144,7 +144,7 @@ public class PlantationAreaManager {
         Map<FarmType, Map<Integer, FarmAnchor>> anchors = new EnumMap<>(FarmType.class);
         
         try {
-            String sql = "SELECT farm_type, instance_id, anchor_x, anchor_y, anchor_z FROM farm_anchors WHERE uuid = ?";
+            String sql = "SELECT farm_type, instance_id, anchor_x, anchor_y, anchor_z FROM farming_farm_anchors WHERE uuid = ?";
             PreparedStatement stmt = plugin.getDatabaseManager().prepareStatement(sql);
             stmt.setString(1, uuid.toString());
             ResultSet rs = stmt.executeQuery();
@@ -236,7 +236,7 @@ public class PlantationAreaManager {
     private void saveFarmAnchor(UUID uuid, FarmType type, int instanceId, Location loc) {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
-                String sql = "INSERT INTO farm_anchors (uuid, farm_type, instance_id, anchor_x, anchor_y, anchor_z) " +
+                String sql = "INSERT INTO farming_farm_anchors (uuid, farm_type, instance_id, anchor_x, anchor_y, anchor_z) " +
                            "VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE " +
                            "anchor_x = VALUES(anchor_x), anchor_y = VALUES(anchor_y), anchor_z = VALUES(anchor_z)";
                 PreparedStatement stmt = plugin.getDatabaseManager().prepareStatement(sql);

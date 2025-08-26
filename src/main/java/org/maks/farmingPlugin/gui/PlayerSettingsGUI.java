@@ -141,7 +141,7 @@ public class PlayerSettingsGUI implements InventoryHolder {
         
         // Get player statistics from database
         try {
-            String sql = "SELECT * FROM player_stats WHERE uuid = ?";
+            String sql = "SELECT * FROM farming_player_stats WHERE uuid = ?";
             var stmt = plugin.getDatabaseManager().prepareStatement(sql);
             stmt.setString(1, player.getUniqueId().toString());
             var rs = stmt.executeQuery();

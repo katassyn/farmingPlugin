@@ -158,16 +158,16 @@ Każda farma może osiągnąć poziom 10:
 ## 🗄️ Struktura Bazy Danych
 
 ### Główne Tabele
-- `player_plantations` - Dane farm graczy
-- `player_materials` - Materiały graczy
-- `plantation_storage` - Przechowywane materiały w farmach
-- `player_plots` - Lokalizacje plantacji
-- `farm_anchors` - Pozycje farm
-- `farm_upgrades` - Historia ulepszeń
-- `player_stats` - Statystyki graczy
-- `harvest_log` - Logi zbiorów
-- `farm_unlocks` - Odblokowane farmy
-- `player_settings` - Ustawienia graczy
+- `farming_player_plantations` - Dane farm graczy
+- `farming_player_materials` - Materiały graczy
+- `farming_plantation_storage` - Przechowywane materiały w farmach
+- `farming_player_plots` - Lokalizacje plantacji
+- `farming_farm_anchors` - Pozycje farm
+- `farming_farm_upgrades` - Historia ulepszeń
+- `farming_player_stats` - Statystyki graczy
+- `farming_harvest_log` - Logi zbiorów
+- `farming_farm_unlocks` - Odblokowane farmy
+- `farming_player_settings` - Ustawienia graczy
 
 ## 🔐 Permisje
 

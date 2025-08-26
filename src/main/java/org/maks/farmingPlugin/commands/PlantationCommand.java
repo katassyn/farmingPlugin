@@ -233,7 +233,7 @@ public class PlantationCommand implements CommandExecutor, TabCompleter {
         player.sendMessage(ChatColor.GOLD + "╚════════════════════════════════════╝");
         
         try {
-            String sql = "SELECT * FROM player_stats WHERE uuid = ?";
+            String sql = "SELECT * FROM farming_player_stats WHERE uuid = ?";
             var stmt = plugin.getDatabaseManager().prepareStatement(sql);
             stmt.setString(1, player.getUniqueId().toString());
             var rs = stmt.executeQuery();
@@ -338,8 +338,8 @@ public class PlantationCommand implements CommandExecutor, TabCompleter {
             plugin.getPlantationManager().getPlayerFarms(targetUuid).clear();
             
             // Clear from database
-            String[] tables = {"player_plantations", "plantation_storage", "farm_anchors", 
-                              "player_materials", "player_stats", "farm_unlocks"};
+            String[] tables = {"farming_player_plantations", "farming_plantation_storage", "farming_farm_anchors", 
+                              "farming_player_materials", "farming_player_stats", "farming_farm_unlocks"};
             
             for (String table : tables) {
                 String sql = "DELETE FROM " + table + " WHERE uuid = ?";
@@ -563,7 +563,7 @@ public class PlantationCommand implements CommandExecutor, TabCompleter {
         player.sendMessage(ChatColor.GOLD + "╚════════════════════════════════════╝");
         
         try {
-            String sql = "SELECT uuid, total_materials_collected FROM player_stats " +
+            String sql = "SELECT uuid, total_materials_collected FROM farming_player_stats " +
                         "ORDER BY total_materials_collected DESC LIMIT 10";
             var stmt = plugin.getDatabaseManager().prepareStatement(sql);
             var rs = stmt.executeQuery();

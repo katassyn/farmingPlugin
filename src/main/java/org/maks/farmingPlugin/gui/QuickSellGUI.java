@@ -132,7 +132,7 @@ public class QuickSellGUI implements InventoryHolder {
         
         // Get player's total earnings from database
         try {
-            String sql = "SELECT total_money_earned FROM player_stats WHERE uuid = ?";
+            String sql = "SELECT total_money_earned FROM farming_player_stats WHERE uuid = ?";
             var stmt = plugin.getDatabaseManager().prepareStatement(sql);
             stmt.setString(1, player.getUniqueId().toString());
             var rs = stmt.executeQuery();
