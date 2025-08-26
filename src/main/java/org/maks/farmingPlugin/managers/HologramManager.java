@@ -85,7 +85,12 @@ public class HologramManager {
             String timeString = formatTime(timeLeft);
             lines.add(ChatColor.YELLOW + "Next: " + ChatColor.WHITE + timeString);
         }
-        
+
+        // Storage capacity
+        long stored = Math.min(farm.getMaxStorage(),
+                (System.currentTimeMillis() - farm.getLastHarvest()) / farm.getAdjustedGrowthTime());
+        lines.add(ChatColor.GRAY + "Storage: " + ChatColor.WHITE + stored + "/" + farm.getMaxStorage());
+
         // Efficiency if upgraded
         if (farm.getEfficiency() > 1) {
             lines.add(ChatColor.AQUA + "⚡ Efficiency: " + farm.getEfficiency() + "x");

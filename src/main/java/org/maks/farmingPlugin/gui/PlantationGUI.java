@@ -114,7 +114,11 @@ public class PlantationGUI implements InventoryHolder {
             progressBar.append(ChatColor.GREEN + "] " + ChatColor.WHITE + String.format("%.1f%%", progress));
             lore.add(progressBar.toString());
         }
-        
+
+        long stored = Math.min(farmInstance.getMaxStorage(),
+                (System.currentTimeMillis() - farmInstance.getLastHarvest()) / farmInstance.getAdjustedGrowthTime());
+        lore.add(ChatColor.GRAY + "Storage: " + ChatColor.WHITE + stored + "/" + farmInstance.getMaxStorage());
+
         lore.add("");
         lore.add(ChatColor.GRAY + "Total Harvests: " + ChatColor.WHITE + farmInstance.getTotalHarvests());
         lore.add(ChatColor.GRAY + "Experience: " + ChatColor.AQUA + farmInstance.getExp() + 
