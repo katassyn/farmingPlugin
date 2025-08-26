@@ -101,7 +101,7 @@ plantation:
     y_offset: 2.0
   rebuild_on_join: true
 
-# --- TRYB TESTOWY ---
+# --- TEST MODE ---
 test_mode:
   enabled: true
   growth_minutes: 1

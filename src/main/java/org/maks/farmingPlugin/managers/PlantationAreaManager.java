@@ -196,6 +196,8 @@ public class PlantationAreaManager {
         int x2 = x1 + plotWidth - 1;
         int z2 = z1 + plotDepth - 1;
         int y = origin.getBlockY();
+        int gateX = x1 + plotWidth / 2;
+        int barrierY = y + 1;
 
         // Create the floor
         for (int x = x1; x <= x2; x++) {
@@ -209,18 +211,30 @@ public class PlantationAreaManager {
             }
         }
 
-        // Build fence perimeter
+        // Build fence perimeter with barrier above to keep drops contained
         for (int x = x1; x <= x2; x++) {
             world.getBlockAt(x, y, z1).setType(fenceMaterial);
+            world.getBlockAt(x, barrierY, z1).setType(Material.BARRIER);
+
             world.getBlockAt(x, y, z2).setType(fenceMaterial);
+            if (x != gateX && x != gateX - 1 && x != gateX + 1) {
+                world.getBlockAt(x, barrierY, z2).setType(Material.BARRIER);
+            }
         }
         for (int z = z1 + 1; z < z2; z++) {
             world.getBlockAt(x1, y, z).setType(fenceMaterial);
+            world.getBlockAt(x1, barrierY, z).setType(Material.BARRIER);
+
             world.getBlockAt(x2, y, z).setType(fenceMaterial);
+            world.getBlockAt(x2, barrierY, z).setType(Material.BARRIER);
         }
 
+        // Add barriers above gate and lantern spots
+        world.getBlockAt(gateX, barrierY + 1, z2).setType(Material.BARRIER);
+        world.getBlockAt(gateX - 1, barrierY + 1, z2).setType(Material.BARRIER);
+        world.getBlockAt(gateX + 1, barrierY + 1, z2).setType(Material.BARRIER);
+
         // Add gate at front center
-        int gateX = x1 + plotWidth / 2;
         world.getBlockAt(gateX, y, z2).setType(gateMaterial);
 
         // Build central path from spawn to back
