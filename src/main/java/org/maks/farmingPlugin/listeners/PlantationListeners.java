@@ -124,17 +124,12 @@ public class PlantationListeners implements Listener {
         // Get the instance from location
         int instanceId = plugin.getPlantationAreaManager()
             .getFarmInstanceFromLocation(player.getUniqueId(), farmType, block.getLocation());
-        
+
         if (instanceId == -1) {
-            // This is a new farm location, need to determine instance
-            instanceId = getNextAvailableInstance(player.getUniqueId(), farmType);
-            
-            if (instanceId == -1) {
-                player.sendMessage(ChatColor.RED + "All " + farmType.getDisplayName() + 
-                                 " instances are already created!");
-                player.sendMessage(ChatColor.YELLOW + "Maximum instances: " + farmType.getMaxInstances());
-                return;
-            }
+            player.sendMessage(ChatColor.RED + "Użyj jednego z oznaczonych miejsc dla: "
+                               + farmType.getDisplayName() + ".");
+            player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 0.8f);
+            return;
         }
 
         FarmInstance farmInstance = plugin.getPlantationManager()
@@ -391,14 +386,30 @@ public class PlantationListeners implements Listener {
     public void onBlockPlace(BlockPlaceEvent event) {
         Player player = event.getPlayer();
         Block block = event.getBlock();
-        
-        // Prevent placing on plantations
+
+        // Prevent placing on other players' plantations
         if (plugin.getConfig().getBoolean("plantations.protection.block_build", true)) {
             UUID owner = findPlantationOwner(block.getLocation());
-            if (owner != null && !owner.equals(player.getUniqueId()) && 
+            if (owner != null && !owner.equals(player.getUniqueId()) &&
                 !player.hasPermission("plantation.admin.build")) {
                 event.setCancelled(true);
                 player.sendMessage(ChatColor.RED + "You cannot build on other players' plantations!");
+                return;
+            }
+        }
+
+        // Block placing farm blocks on any plantation
+        if (plugin.getConfig().getBoolean("plantations.protection.block_farm_blocks", true)) {
+            if (FarmType.fromBlockType(block.getType()) != null) {
+                UUID owner = findPlantationOwner(block.getLocation());
+                if (owner != null) {
+                    event.setCancelled(true);
+                    if (owner.equals(player.getUniqueId())) {
+                        player.sendMessage(ChatColor.RED + "Nie możesz ręcznie stawiać bloków farm. Korzystaj z oznaczonych slotów.");
+                    } else {
+                        player.sendMessage(ChatColor.RED + "Nie możesz budować na cudzej plantacji!");
+                    }
+                }
             }
         }
     }
@@ -439,23 +450,6 @@ public class PlantationListeners implements Listener {
         return null;
     }
 
-    private int getNextAvailableInstance(UUID playerUuid, FarmType farmType) {
-        List<FarmInstance> playerFarms = plugin.getPlantationManager().getPlayerFarms(playerUuid);
-        int maxInstances = farmType.getMaxInstances();
-        
-        for (int i = 1; i <= maxInstances; i++) {
-            final int instanceId = i;
-            boolean exists = playerFarms.stream()
-                .anyMatch(farm -> farm.getFarmType() == farmType && farm.getInstanceId() == instanceId);
-            
-            if (!exists && plugin.getPlantationAreaManager().isInstanceAvailable(playerUuid, farmType, instanceId)) {
-                return instanceId;
-            }
-        }
-        
-        return -1;
-    }
-
     private boolean canCreateFarm(Player player, FarmType farmType) {
         // Berry Orchards is always available
         if (farmType == FarmType.BERRY_ORCHARDS) {
@@ -489,15 +483,6 @@ public class PlantationListeners implements Listener {
         
         player.sendMessage(ChatColor.RED + "━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 0.8f);
-    }
-
-    private void giveStarterKit(Player player) {
-        // Give some starter materials
-        ItemStack starterItem = plugin.getMaterialManager()
-            .createMaterial(org.maks.farmingPlugin.materials.MaterialType.PLANT_FIBER, 1, 10);
-        
-        player.getInventory().addItem(starterItem);
-        player.sendMessage(ChatColor.GREEN + "You received a starter kit with 10x Plant Fiber!");
     }
 
     private void checkFarmsNeedingAttention(Player player) {

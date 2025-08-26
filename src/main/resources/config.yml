@@ -71,19 +71,13 @@ plantations:
   protection:
     block_build: true
     block_pvp: false
+    block_farm_blocks: true
     
   # Hologram settings
   holograms:
     enabled: true
     update_interval: 30 # seconds
 
-# Starter kit - disable by default
-starter_kit:
-  enabled: false
-  items:
-    - material: PLANT_FIBER
-      tier: 1
-      amount: 10
 
 # Auto-save settings
 auto_save:

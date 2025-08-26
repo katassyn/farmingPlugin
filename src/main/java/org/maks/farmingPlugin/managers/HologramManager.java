@@ -10,7 +10,6 @@ import org.bukkit.scheduler.BukkitRunnable;
 import org.maks.farmingPlugin.FarmingPlugin;
 import org.maks.farmingPlugin.farms.FarmInstance;
 import org.maks.farmingPlugin.farms.FarmType;
-import org.maks.farmingPlugin.fruits.FruitType;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -69,19 +68,8 @@ public class HologramManager {
     private List<String> generateHologramLines(FarmInstance farm) {
         List<String> lines = new ArrayList<>();
         
-        // Farm title with fruit info
-        FruitType fruitType = FruitType.getForFarm(farm.getFarmType());
-        String title = ChatColor.YELLOW + farm.getFarmType().getDisplayName();
-        lines.add(title);
-        
-        // Instance and level info
-        lines.add(ChatColor.GRAY + "Instance #" + farm.getInstanceId() + 
-                 " | Level " + farm.getLevel());
-        
-        // Fruit production info
-        if (fruitType != null) {
-            lines.add(ChatColor.GREEN + "Produces: " + fruitType.getDisplayName());
-        }
+        // Farm title only
+        lines.add(ChatColor.YELLOW + farm.getFarmType().getDisplayName());
         
         // Growth status
         if (farm.isReadyForHarvest()) {
