@@ -21,8 +21,9 @@ public enum FarmType {
     private final int maxInstances;
     private final int growthTimeHours;
     private final int storageLimit;
+    private final int harvestSeconds;
 
-    FarmType(String id, String displayName, Material blockType, long unlockCost, 
+    FarmType(String id, String displayName, Material blockType, long unlockCost,
              int maxInstances, int growthTimeHours, int storageLimit) {
         this.id = id;
         this.displayName = displayName;
@@ -31,6 +32,7 @@ public enum FarmType {
         this.maxInstances = maxInstances;
         this.growthTimeHours = growthTimeHours;
         this.storageLimit = storageLimit;
+        this.harvestSeconds = growthTimeHours * 3600;
     }
 
     public String getId() {
@@ -63,6 +65,10 @@ public enum FarmType {
 
     public int getStorageLimit() {
         return storageLimit;
+    }
+
+    public int getHarvestSeconds() {
+        return harvestSeconds;
     }
 
     public static FarmType fromId(String id) {

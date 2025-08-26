@@ -1,6 +1,7 @@
 package org.maks.farmingPlugin.farms;
 
 import org.bukkit.Location;
+import org.maks.farmingPlugin.FarmingPlugin;
 import org.maks.farmingPlugin.materials.MaterialType;
 
 import java.util.HashMap;
@@ -161,10 +162,10 @@ public class FarmInstance {
      * Get adjusted growth time considering all modifiers
      */
     public long getAdjustedGrowthTime() {
-        long baseTime = farmType.getGrowthTimeMillis();
+        long baseTime = FarmingPlugin.getInstance().getPlantationManager().getHarvestIntervalMillis(this);
         double efficiencyModifier = 1.0 / getEfficiency();
         double levelModifier = 1.0 - (level - 1) * 0.05; // -5% per level
-        
+
         return (long) (baseTime * efficiencyModifier * levelModifier);
     }
 

@@ -54,7 +54,7 @@ public class OfflineGrowthManager {
 
         long currentTime = System.currentTimeMillis();
         long lastHarvest = farm.getLastHarvest();
-        long growthTime = farm.getFarmType().getGrowthTimeMillis() / farm.getEfficiency();
+        long growthTime = plantationManager.getHarvestIntervalMillis(farm) / farm.getEfficiency();
         
         long timeSinceHarvest = currentTime - lastHarvest;
         

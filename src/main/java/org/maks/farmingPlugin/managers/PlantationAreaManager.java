@@ -5,17 +5,29 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockState;
+import org.bukkit.block.Sign;
+import org.bukkit.block.data.BlockData;
+import org.bukkit.block.data.Directional;
+import org.bukkit.block.data.Rotatable;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.maks.farmingPlugin.FarmingPlugin;
 import org.maks.farmingPlugin.database.DatabaseManager;
 import org.maks.farmingPlugin.farms.FarmType;
+import org.maks.farmingPlugin.farms.FarmInstance;
+import org.bukkit.ChatColor;
+import org.bukkit.persistence.PersistentDataType;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.*;
 import java.util.UUID;
+import java.util.function.BiFunction;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class PlantationAreaManager {
@@ -27,6 +39,10 @@ public class PlantationAreaManager {
     private final int originX, originY, originZ;
     private final int plotWidth, plotDepth, spacing, gridRows, gridCols;
     private final Material fenceMaterial, gateMaterial;
+
+    private NamespacedKey PDC_LOCKED = new NamespacedKey(FarmingPlugin.getInstance(), "locked_farm");
+    private NamespacedKey PDC_FARM_TYPE = new NamespacedKey(FarmingPlugin.getInstance(), "farm_type");
+    private NamespacedKey PDC_INSTANCE_ID = new NamespacedKey(FarmingPlugin.getInstance(), "instance_id");
 
     // Farm layout configuration - positions for different farm types and instances
     private static final Map<FarmType, List<int[]>> FARM_LAYOUT = new HashMap<>();
@@ -364,6 +380,126 @@ public class PlantationAreaManager {
             result.put(typeEntry.getKey(), locations);
         }
         return result;
+    }
+
+    /** Zbuduj layout i postaw "LOCKED" dla nieodblokowanych */
+    public void regeneratePlayerArea(Player player) {
+        World w = Bukkit.getWorld(plugin.getConfig().getString("plantation.world", "world"));
+        int baseX = plugin.getConfig().getInt("plantation.spawn.x");
+        int baseY = plugin.getConfig().getInt("plantation.spawn.y");
+        int baseZ = plugin.getConfig().getInt("plantation.spawn.z");
+
+        if (w == null) {
+            plugin.getLogger().warning("World not found for plantation.world!");
+            return;
+        }
+
+        buildPath(w, baseX, baseY, 998, 989);
+
+        Map<FarmType, List<Location>> anchors = computeAnchors(w, baseY);
+
+        UUID uid = player.getUniqueId();
+        List<FarmInstance> owned = plugin.getPlantationManager().getPlayerFarms(uid);
+        Set<String> ownedKeys = owned.stream()
+            .map(fi -> key(fi.getFarmType(), fi.getInstanceId()))
+            .collect(Collectors.toSet());
+
+        for (Map.Entry<FarmType, List<Location>> e : anchors.entrySet()) {
+            FarmType type = e.getKey();
+            List<Location> list = e.getValue();
+            for (int i = 0; i < list.size(); i++) {
+                Location loc = list.get(i);
+                String k = key(type, i + 1);
+                if (ownedKeys.contains(k)) {
+                    placeFarmBlock(loc, type);
+                } else {
+                    placeLockedSign(loc, type, i + 1);
+                }
+            }
+        }
+    }
+
+    private String key(FarmType t, int id) {
+        return t.getId() + "#" + id;
+    }
+
+    private void buildPath(World w, int x, int y, int zFrom, int zTo) {
+        Material pathMat = Material.matchMaterial(
+            plugin.getConfig().getString("blocks.path", "DIRT_PATH")
+        );
+        if (pathMat == null) pathMat = Material.DIRT_PATH;
+
+        int dz = zFrom <= zTo ? 1 : -1;
+        for (int z = zFrom; z != zTo + dz; z += dz) {
+            Block b = w.getBlockAt(x, y, z);
+            b.setType(pathMat, false);
+        }
+    }
+
+    /** Wylicza dokładne pozycje wg Twoich koordów (Y z configu) */
+    private Map<FarmType, List<Location>> computeAnchors(World w, int y) {
+        Map<FarmType, List<Location>> map = new LinkedHashMap<>();
+
+        Function<int[], Location> L = arr -> new Location(w, arr[0], y, arr[1]);
+        BiFunction<int[], int[], List<Location>> rect6 = (a, b) -> {
+            int x1 = Math.min(a[0], b[0]), x2 = Math.max(a[0], b[0]);
+            int z1 = Math.min(a[1], b[1]), z2 = Math.max(a[1], b[1]);
+            int[] xs = new int[]{x1, x1 + 2, x1 + 4};
+            int[] zs = (z2 - z1 == 2) ? new int[]{z2, z1} : new int[]{z1, z2};
+            return Arrays.asList(
+                L.apply(new int[]{xs[0], zs[0]}),
+                L.apply(new int[]{xs[1], zs[0]}),
+                L.apply(new int[]{xs[2], zs[0]}),
+                L.apply(new int[]{xs[0], zs[1]}),
+                L.apply(new int[]{xs[1], zs[1]}),
+                L.apply(new int[]{xs[2], zs[1]})
+            );
+        };
+        BiFunction<int[], int[], List<Location>> line3 = (a, b) -> {
+            int x1 = Math.min(a[0], b[0]), x2 = Math.max(a[0], b[0]);
+            int z = a[1];
+            return Arrays.asList(
+                L.apply(new int[]{x1, z}),
+                L.apply(new int[]{x1 + 2, z}),
+                L.apply(new int[]{x2, z})
+            );
+        };
+
+        map.put(FarmType.BERRY_ORCHARDS, rect6.apply(new int[]{1010, 997}, new int[]{1014, 995}));
+        map.put(FarmType.MELON_GROVES, rect6.apply(new int[]{1002, 995}, new int[]{1006, 997}));
+        map.put(FarmType.FUNGAL_CAVERNS, rect6.apply(new int[]{1010, 993}, new int[]{1014, 991}));
+        map.put(FarmType.PUMPKIN_PATCHES, rect6.apply(new int[]{1002, 991}, new int[]{1006, 993}));
+        map.put(FarmType.MYSTIC_GARDENS, line3.apply(new int[]{1010, 989}, new int[]{1014, 989}));
+        map.put(FarmType.ANCIENT_MANGROVES, line3.apply(new int[]{1002, 989}, new int[]{1006, 989}));
+        map.put(FarmType.DESERT_SANCTUARIES, Arrays.asList(L.apply(new int[]{1008, 987})));
+
+        return map;
+    }
+
+    public void placeFarmBlock(Location loc, FarmType type) {
+        Material ground = Material.matchMaterial(plugin.getConfig().getString("blocks.ground", "GRASS_BLOCK"));
+        if (ground == null) ground = Material.GRASS_BLOCK;
+        loc.getBlock().getWorld().getBlockAt(loc.getBlockX(), loc.getBlockY() - 1, loc.getBlockZ()).setType(ground, false);
+
+        loc.getBlock().setType(type.getBlockType(), false);
+    }
+
+    private void placeLockedSign(Location loc, FarmType type, int instanceId) {
+        loc.getBlock().setType(Material.AIR, false);
+        loc.getWorld().getBlockAt(loc.getBlockX(), loc.getBlockY() - 1, loc.getBlockZ()).setType(Material.GRASS_BLOCK, false);
+
+        loc.getBlock().setType(Material.OAK_SIGN, false);
+        BlockState state = loc.getBlock().getState();
+        if (state instanceof Sign sign) {
+            sign.setLine(0, ChatColor.RED + "LOCKED");
+            sign.setLine(1, ChatColor.YELLOW + type.getDisplayName());
+            sign.setLine(2, ChatColor.GRAY + "Prawy klik aby");
+            sign.setLine(3, ChatColor.GRAY + "odblokować");
+            sign.getPersistentDataContainer().set(PDC_LOCKED, PersistentDataType.INTEGER, 1);
+            sign.getPersistentDataContainer().set(PDC_FARM_TYPE, PersistentDataType.STRING, type.getId());
+            sign.getPersistentDataContainer().set(PDC_INSTANCE_ID, PersistentDataType.INTEGER, instanceId);
+            sign.update(true, false);
+        }
     }
 
     public static class PlantationArea {
