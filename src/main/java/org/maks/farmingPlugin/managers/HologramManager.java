@@ -85,7 +85,7 @@ public class HologramManager {
         
         // Growth status
         if (farm.isReadyForHarvest()) {
-            lines.add(ChatColor.GREEN + ChatColor.BOLD + "✔ READY TO HARVEST!");
+            lines.add(ChatColor.GREEN.toString() + ChatColor.BOLD.toString() + "✔ READY TO HARVEST!");
         } else {
             long timeLeft = farm.getTimeUntilNextHarvest();
             String timeString = formatTime(timeLeft);
