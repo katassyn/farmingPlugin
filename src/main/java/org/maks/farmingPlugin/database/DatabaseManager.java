@@ -6,9 +6,7 @@ import org.bukkit.World;
 import org.maks.farmingPlugin.FarmingPlugin;
 
 import java.sql.*;
-import java.util.HashSet;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import java.util.logging.Level;
 
@@ -102,7 +100,7 @@ public class DatabaseManager {
     public void createTables() {
         // Main player plantations table
         String playerPlantationsTable = """
-            CREATE TABLE IF NOT EXISTS player_plantations (
+            CREATE TABLE IF NOT EXISTS farming_player_plantations (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 uuid VARCHAR(36) NOT NULL,
                 farm_type VARCHAR(50) NOT NULL,
@@ -122,7 +120,7 @@ public class DatabaseManager {
 
         // Player materials inventory
         String playerMaterialsTable = """
-            CREATE TABLE IF NOT EXISTS player_materials (
+            CREATE TABLE IF NOT EXISTS farming_player_materials (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 uuid VARCHAR(36) NOT NULL,
                 material_type VARCHAR(50) NOT NULL,
@@ -138,7 +136,7 @@ public class DatabaseManager {
 
         // Farm storage table
         String plantationStorageTable = """
-            CREATE TABLE IF NOT EXISTS plantation_storage (
+            CREATE TABLE IF NOT EXISTS farming_plantation_storage (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 uuid VARCHAR(36) NOT NULL,
                 farm_type VARCHAR(50) NOT NULL,
@@ -153,7 +151,7 @@ public class DatabaseManager {
 
         // Player plots locations
         String playerPlotsTable = """
-            CREATE TABLE IF NOT EXISTS player_plots (
+            CREATE TABLE IF NOT EXISTS farming_player_plots (
                 uuid VARCHAR(36) PRIMARY KEY,
                 world VARCHAR(64) NOT NULL,
                 origin_x INT NOT NULL,
@@ -167,7 +165,7 @@ public class DatabaseManager {
 
         // Farm anchors (exact positions of farms)
         String farmAnchorsTable = """
-            CREATE TABLE IF NOT EXISTS farm_anchors (
+            CREATE TABLE IF NOT EXISTS farming_farm_anchors (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 uuid VARCHAR(36) NOT NULL,
                 farm_type VARCHAR(50) NOT NULL,
@@ -184,7 +182,7 @@ public class DatabaseManager {
 
         // Farm upgrades history
         String farmUpgradesTable = """
-            CREATE TABLE IF NOT EXISTS farm_upgrades (
+            CREATE TABLE IF NOT EXISTS farming_farm_upgrades (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 uuid VARCHAR(36) NOT NULL,
                 farm_type VARCHAR(50) NOT NULL,
@@ -202,7 +200,7 @@ public class DatabaseManager {
 
         // Player statistics
         String playerStatsTable = """
-            CREATE TABLE IF NOT EXISTS player_stats (
+            CREATE TABLE IF NOT EXISTS farming_player_stats (
                 uuid VARCHAR(36) PRIMARY KEY,
                 total_farms_created INT DEFAULT 0,
                 total_harvests BIGINT DEFAULT 0,
@@ -217,7 +215,7 @@ public class DatabaseManager {
 
         // Harvest log for analytics
         String harvestLogTable = """
-            CREATE TABLE IF NOT EXISTS harvest_log (
+            CREATE TABLE IF NOT EXISTS farming_harvest_log (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 uuid VARCHAR(36) NOT NULL,
                 farm_type VARCHAR(50) NOT NULL,
@@ -232,7 +230,7 @@ public class DatabaseManager {
 
         // Farm unlock history
         String farmUnlocksTable = """
-            CREATE TABLE IF NOT EXISTS farm_unlocks (
+            CREATE TABLE IF NOT EXISTS farming_farm_unlocks (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 uuid VARCHAR(36) NOT NULL,
                 farm_type VARCHAR(50) NOT NULL,
@@ -246,7 +244,7 @@ public class DatabaseManager {
 
         // Settings per player
         String playerSettingsTable = """
-            CREATE TABLE IF NOT EXISTS player_settings (
+            CREATE TABLE IF NOT EXISTS farming_player_settings (
                 uuid VARCHAR(36) PRIMARY KEY,
                 auto_collect_enabled BOOLEAN DEFAULT FALSE,
                 hologram_enabled BOOLEAN DEFAULT TRUE,
@@ -272,84 +270,12 @@ public class DatabaseManager {
             stmt.executeUpdate(playerSettingsTable);
             
             plugin.getLogger().info("All database tables created successfully!");
-            
-            // Migrate existing tables if needed
-            migrateExistingTables();
-            
+
             // Create stored procedures for complex operations
             createStoredProcedures();
             
         } catch (SQLException e) {
             plugin.getLogger().log(Level.SEVERE, "Could not create database tables!", e);
-        }
-    }
-
-    private void migrateExistingTables() {
-        try (Connection conn = getConnection()) {
-            DatabaseMetaData metaData = conn.getMetaData();
-            
-            // Check if player_plantations table exists
-            ResultSet tables = metaData.getTables(null, null, "player_plantations", null);
-            if (!tables.next()) {
-                tables.close();
-                plugin.getLogger().info("player_plantations table doesn't exist yet, skipping migration");
-                return;
-            }
-            tables.close();
-            
-            // Check and add missing columns to player_plantations table
-            ResultSet columns = metaData.getColumns(null, null, "player_plantations", null);
-            Set<String> existingColumns = new HashSet<>();
-            while (columns.next()) {
-                existingColumns.add(columns.getString("COLUMN_NAME").toLowerCase());
-            }
-            columns.close();
-            
-            if (existingColumns.isEmpty()) {
-                plugin.getLogger().info("player_plantations table is empty or couldn't read columns, skipping migration");
-                return;
-            }
-            
-            try (Statement stmt = conn.createStatement()) {
-                int migrationsRun = 0;
-                
-                // Add total_harvests column if missing
-                if (!existingColumns.contains("total_harvests")) {
-                    stmt.executeUpdate("ALTER TABLE player_plantations ADD COLUMN total_harvests INT DEFAULT 0");
-                    plugin.getLogger().info("Added missing column 'total_harvests' to player_plantations table");
-                    migrationsRun++;
-                }
-                
-                // Add exp column if missing
-                if (!existingColumns.contains("exp")) {
-                    stmt.executeUpdate("ALTER TABLE player_plantations ADD COLUMN exp INT DEFAULT 0");
-                    plugin.getLogger().info("Added missing column 'exp' to player_plantations table");
-                    migrationsRun++;
-                }
-                
-                // Add created_at column if missing
-                if (!existingColumns.contains("created_at")) {
-                    stmt.executeUpdate("ALTER TABLE player_plantations ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
-                    plugin.getLogger().info("Added missing column 'created_at' to player_plantations table");
-                    migrationsRun++;
-                }
-                
-                // Add updated_at column if missing
-                if (!existingColumns.contains("updated_at")) {
-                    stmt.executeUpdate("ALTER TABLE player_plantations ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
-                    plugin.getLogger().info("Added missing column 'updated_at' to player_plantations table");
-                    migrationsRun++;
-                }
-                
-                if (migrationsRun > 0) {
-                    plugin.getLogger().info("Database migration completed successfully! " + migrationsRun + " columns added.");
-                } else {
-                    plugin.getLogger().info("Database schema is up to date, no migration needed.");
-                }
-            }
-            
-        } catch (SQLException e) {
-            plugin.getLogger().log(Level.WARNING, "Could not migrate existing database tables: " + e.getMessage(), e);
         }
     }
 
@@ -359,7 +285,7 @@ public class DatabaseManager {
             CREATE PROCEDURE IF NOT EXISTS GetPlayerMaterialCount(IN player_uuid VARCHAR(36))
             BEGIN
                 SELECT material_type, tier, amount 
-                FROM player_materials 
+                FROM farming_player_materials 
                 WHERE uuid = player_uuid AND amount > 0
                 ORDER BY material_type, tier;
             END
@@ -375,7 +301,7 @@ public class DatabaseManager {
             )
             BEGIN
                 -- Update harvest count
-                UPDATE player_plantations 
+                UPDATE farming_player_plantations 
                 SET total_harvests = total_harvests + 1,
                     last_harvest = UNIX_TIMESTAMP() * 1000
                 WHERE uuid = player_uuid 
@@ -383,11 +309,11 @@ public class DatabaseManager {
                   AND instance_id = p_instance_id;
                 
                 -- Log harvest
-                INSERT INTO harvest_log (uuid, farm_type, instance_id, materials_json)
+                INSERT INTO farming_harvest_log (uuid, farm_type, instance_id, materials_json)
                 VALUES (player_uuid, p_farm_type, p_instance_id, materials_json);
                 
                 -- Update player stats
-                UPDATE player_stats 
+                UPDATE farming_player_stats 
                 SET total_harvests = total_harvests + 1
                 WHERE uuid = player_uuid;
             END
@@ -412,7 +338,7 @@ public class DatabaseManager {
 
     // Player plot management
     public void savePlayerPlot(UUID uuid, String world, int x, int y, int z) {
-        String sql = "INSERT INTO player_plots (uuid, world, origin_x, origin_y, origin_z) " +
+        String sql = "INSERT INTO farming_player_plots (uuid, world, origin_x, origin_y, origin_z) " +
                     "VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE " +
                     "world = VALUES(world), origin_x = VALUES(origin_x), " +
                     "origin_y = VALUES(origin_y), origin_z = VALUES(origin_z)";
@@ -430,7 +356,7 @@ public class DatabaseManager {
     }
 
     public Optional<Location> loadPlayerPlot(UUID uuid) {
-        String sql = "SELECT world, origin_x, origin_y, origin_z FROM player_plots WHERE uuid = ?";
+        String sql = "SELECT world, origin_x, origin_y, origin_z FROM farming_player_plots WHERE uuid = ?";
         
         try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
             ps.setString(1, uuid.toString());
@@ -457,7 +383,7 @@ public class DatabaseManager {
 
     // Player statistics
     public void updatePlayerStats(UUID uuid, String statType, long value) {
-        String sql = "INSERT INTO player_stats (uuid, " + statType + ") VALUES (?, ?) " +
+        String sql = "INSERT INTO farming_player_stats (uuid, " + statType + ") VALUES (?, ?) " +
                     "ON DUPLICATE KEY UPDATE " + statType + " = " + statType + " + VALUES(" + statType + ")";
         
         try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
@@ -471,7 +397,7 @@ public class DatabaseManager {
 
     // Player settings
     public void savePlayerSetting(UUID uuid, String setting, Object value) {
-        String sql = "INSERT INTO player_settings (uuid, " + setting + ") VALUES (?, ?) " +
+        String sql = "INSERT INTO farming_player_settings (uuid, " + setting + ") VALUES (?, ?) " +
                     "ON DUPLICATE KEY UPDATE " + setting + " = VALUES(" + setting + ")";
         
         try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
@@ -484,7 +410,7 @@ public class DatabaseManager {
     }
 
     public boolean getPlayerBooleanSetting(UUID uuid, String setting, boolean defaultValue) {
-        String sql = "SELECT " + setting + " FROM player_settings WHERE uuid = ?";
+        String sql = "SELECT " + setting + " FROM farming_player_settings WHERE uuid = ?";
         
         try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
             ps.setString(1, uuid.toString());
@@ -503,7 +429,7 @@ public class DatabaseManager {
 
     // Material management
     public int getPlayerMaterialAmount(UUID uuid, String materialType, int tier) {
-        String sql = "SELECT amount FROM player_materials WHERE uuid = ? AND material_type = ? AND tier = ?";
+        String sql = "SELECT amount FROM farming_player_materials WHERE uuid = ? AND material_type = ? AND tier = ?";
         
         try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
             ps.setString(1, uuid.toString());
@@ -523,7 +449,7 @@ public class DatabaseManager {
     }
 
     public void updatePlayerMaterial(UUID uuid, String materialType, int tier, int amount) {
-        String sql = "INSERT INTO player_materials (uuid, material_type, tier, amount, total_collected) " +
+        String sql = "INSERT INTO farming_player_materials (uuid, material_type, tier, amount, total_collected) " +
                     "VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE " +
                     "amount = amount + VALUES(amount), " +
                     "total_collected = total_collected + IF(VALUES(amount) > 0, VALUES(amount), 0)";
@@ -542,7 +468,7 @@ public class DatabaseManager {
 
     // Farm unlock tracking
     public void saveFarmUnlock(UUID uuid, String farmType, double cost, String materialsJson) {
-        String sql = "INSERT INTO farm_unlocks (uuid, farm_type, unlock_cost, materials_used_json) " +
+        String sql = "INSERT INTO farming_farm_unlocks (uuid, farm_type, unlock_cost, materials_used_json) " +
                     "VALUES (?, ?, ?, ?)";
         
         try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
@@ -557,7 +483,7 @@ public class DatabaseManager {
     }
 
     public boolean isFarmUnlocked(UUID uuid, String farmType) {
-        String sql = "SELECT 1 FROM farm_unlocks WHERE uuid = ? AND farm_type = ?";
+        String sql = "SELECT 1 FROM farming_farm_unlocks WHERE uuid = ? AND farm_type = ?";
         
         try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
             ps.setString(1, uuid.toString());

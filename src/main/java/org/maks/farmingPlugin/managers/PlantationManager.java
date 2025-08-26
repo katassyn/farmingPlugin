@@ -145,7 +145,7 @@ public class PlantationManager {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 // Load farms
-                String sql = "SELECT * FROM player_plantations WHERE uuid = ?";
+                String sql = "SELECT * FROM farming_player_plantations WHERE uuid = ?";
                 PreparedStatement stmt = database.prepareStatement(sql);
                 stmt.setString(1, playerUuid.toString());
                 
@@ -213,7 +213,7 @@ public class PlantationManager {
 
     private Map<String, Integer> loadStoredMaterials(UUID playerUuid, FarmType farmType, int instanceId) {
         try {
-            String sql = "SELECT stored_materials_json FROM plantation_storage WHERE uuid = ? AND farm_type = ? AND instance_id = ?";
+            String sql = "SELECT stored_materials_json FROM farming_plantation_storage WHERE uuid = ? AND farm_type = ? AND instance_id = ?";
             PreparedStatement stmt = database.prepareStatement(sql);
             stmt.setString(1, playerUuid.toString());
             stmt.setString(2, farmType.getId());
@@ -245,7 +245,7 @@ public class PlantationManager {
             try {
                 for (FarmInstance farm : farms) {
                     // Save farm data
-                    String sql = "INSERT INTO player_plantations (uuid, farm_type, instance_id, level, efficiency, last_harvest, total_harvests, exp) " +
+                    String sql = "INSERT INTO farming_player_plantations (uuid, farm_type, instance_id, level, efficiency, last_harvest, total_harvests, exp) " +
                                "VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE " +
                                "level = VALUES(level), efficiency = VALUES(efficiency), last_harvest = VALUES(last_harvest), " +
                                "total_harvests = VALUES(total_harvests), exp = VALUES(exp)";
@@ -274,7 +274,7 @@ public class PlantationManager {
     private void saveStoredMaterials(UUID playerUuid, FarmInstance farm) throws SQLException {
         String json = gson.toJson(farm.getStoredMaterials());
         
-        String sql = "INSERT INTO plantation_storage (uuid, farm_type, instance_id, stored_materials_json, auto_collect) " +
+        String sql = "INSERT INTO farming_plantation_storage (uuid, farm_type, instance_id, stored_materials_json, auto_collect) " +
                    "VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE " +
                    "stored_materials_json = VALUES(stored_materials_json), auto_collect = VALUES(auto_collect)";
         
