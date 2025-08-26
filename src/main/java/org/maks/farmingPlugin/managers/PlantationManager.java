@@ -302,8 +302,16 @@ public class PlantationManager {
 
     /**
      * Process farm harvest - now drops fruits commonly and materials rarely
+     * IMPORTANT: This method must only be called from the main thread!
      */
     public void processFarmHarvest(FarmInstance farm) {
+        // Ensure execution on main thread
+        if (!Bukkit.isPrimaryThread()) {
+            plugin.getLogger().warning("processFarmHarvest called from async thread! Scheduling sync execution.");
+            Bukkit.getScheduler().runTask(plugin, () -> processFarmHarvest(farm));
+            return;
+        }
+
         Player player = Bukkit.getPlayer(farm.getOwnerId());
         if (player == null) return;
 
@@ -389,6 +397,11 @@ public class PlantationManager {
         }
 
         player.playSound(dropLoc, Sound.ITEM_BUNDLE_DROP_CONTENTS, 1.0f, 1.0f);
+
+        // Save data asynchronously after harvest
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            savePlayerData(farm.getOwnerId());
+        });
     }
 
     /**
