@@ -15,6 +15,7 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -25,6 +26,7 @@ import org.maks.farmingPlugin.farms.FarmType;
 import org.maks.farmingPlugin.gui.PlantationGUI;
 import org.maks.farmingPlugin.gui.FarmUpgradeGUI;
 import org.maks.farmingPlugin.gui.PlayerSettingsGUI;
+import org.maks.farmingPlugin.gui.QuickSellGUI;
 import org.maks.farmingPlugin.managers.PlantationAreaManager;
 
 import java.util.*;
@@ -196,6 +198,22 @@ public class PlantationListeners implements Listener {
         } else if (event.getInventory().getHolder() instanceof PlayerSettingsGUI settingsGui) {
             event.setCancelled(true);
             handleSettingsGUIClick(player, settingsGui, event);
+        } else if (event.getInventory().getHolder() instanceof QuickSellGUI sellGui) {
+            handleQuickSellGUIClick(player, sellGui, event);
+        }
+    }
+
+    @EventHandler
+    public void onInventoryDrag(InventoryDragEvent event) {
+        if (event.getInventory().getHolder() instanceof QuickSellGUI) {
+            // Allow dragging only in the selling slots
+            for (int slot : event.getRawSlots()) {
+                if (slot < 0 || slot >= event.getInventory().getSize()) continue;
+                if (slot < 10 || slot > 34 || slot % 9 == 0 || slot % 9 == 8) {
+                    event.setCancelled(true);
+                    return;
+                }
+            }
         }
     }
 
@@ -206,22 +224,17 @@ public class PlantationListeners implements Listener {
         String displayName = ChatColor.stripColor(clickedItem.getItemMeta().getDisplayName());
         
         switch (displayName.toLowerCase()) {
-            case "collect all" -> {
-                gui.collectAllMaterials();
-                player.playSound(player.getLocation(), Sound.ENTITY_ITEM_PICKUP, 1.0f, 1.0f);
-            }
             case "drop rates" -> {
                 gui.showDropRates();
                 player.closeInventory();
             }
+            case "quick sell" -> {
+                QuickSellGUI sellGui = new QuickSellGUI(plugin, player);
+                player.openInventory(sellGui.getInventory());
+            }
             case "upgrade farm" -> {
                 FarmUpgradeGUI upgradeGui = new FarmUpgradeGUI(plugin, gui.getFarmInstance(), player);
                 player.openInventory(upgradeGui.getInventory());
-            }
-            case "auto-collect" -> {
-                gui.toggleAutoCollect();
-                gui.refresh();
-                player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1.0f, 1.0f);
             }
             case "statistics" -> {
                 gui.showStatistics();
@@ -230,6 +243,10 @@ public class PlantationListeners implements Listener {
             case "settings" -> {
                 PlayerSettingsGUI settingsGui = new PlayerSettingsGUI(plugin, player);
                 player.openInventory(settingsGui.getInventory());
+            }
+            case "help" -> {
+                sendHelpMessage(player);
+                player.closeInventory();
             }
         }
     }
@@ -256,11 +273,9 @@ public class PlantationListeners implements Listener {
         int slot = event.getSlot();
         
         switch (slot) {
-            case 10 -> gui.toggleSetting("autocollect");
             case 12 -> gui.toggleSetting("holograms");
             case 14 -> gui.toggleSetting("notifications");
             case 16 -> gui.toggleSetting("particles");
-            case 28 -> gui.toggleSetting("inventory");
             case 31 -> gui.resetSettings();
             case 49 -> player.closeInventory();
         }
@@ -271,6 +286,43 @@ public class PlantationListeners implements Listener {
         }
     }
 
+    private void handleQuickSellGUIClick(Player player, QuickSellGUI gui, InventoryClickEvent event) {
+        int slot = event.getSlot();
+        ItemStack clicked = event.getCurrentItem();
+        ItemStack cursor = event.getCursor();
+        
+        // Handle selling area (slots 10-34, excluding borders)
+        if (gui.isSellingSlot(slot)) {
+            // Allow placing fruits
+            if (cursor != null && cursor.getType() != Material.AIR) {
+                if (!gui.isFruit(cursor)) {
+                    event.setCancelled(true);
+                    player.sendMessage(ChatColor.RED + "Only fruits can be placed here!");
+                    player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+                    return;
+                }
+            }
+            // Update display after change
+            plugin.getServer().getScheduler().runTaskLater(plugin, gui::updateTotalDisplay, 1L);
+            return;
+        }
+        
+        // Cancel clicks on control buttons and borders
+        event.setCancelled(true);
+        
+        // Handle control buttons
+        if (clicked == null || !clicked.hasItemMeta()) return;
+        
+        String displayName = ChatColor.stripColor(clicked.getItemMeta().getDisplayName());
+        
+        if (displayName.equals("SELL ALL")) {
+            gui.sellAll();
+        } else if (displayName.equals("Close")) {
+            gui.returnItems();
+            player.closeInventory();
+        }
+    }
+
     @EventHandler
     public void onInventoryClose(InventoryCloseEvent event) {
         if (!(event.getPlayer() instanceof Player player)) return;
@@ -278,6 +330,9 @@ public class PlantationListeners implements Listener {
         // Save data when closing farm GUI
         if (event.getInventory().getHolder() instanceof PlantationGUI) {
             plugin.getPlantationManager().savePlayerData(player.getUniqueId());
+        } else if (event.getInventory().getHolder() instanceof QuickSellGUI gui) {
+            // Return unsold items
+            gui.returnItems();
         }
     }
 
@@ -405,9 +460,9 @@ public class PlantationListeners implements Listener {
     }
 
     private void showUnlockRequirements(Player player, FarmType farmType) {
-        player.sendMessage(ChatColor.RED + "━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        player.sendMessage(ChatColor.RED + "┏━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         player.sendMessage(ChatColor.GOLD + " " + farmType.getDisplayName() + " - LOCKED");
-        player.sendMessage(ChatColor.RED + "━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        player.sendMessage(ChatColor.RED + "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         player.sendMessage(ChatColor.YELLOW + "Requirements to unlock:");
         
         List<String> requirements = plugin.getPlantationManager().getUnlockRequirementsDisplay(farmType);
@@ -415,7 +470,7 @@ public class PlantationListeners implements Listener {
             player.sendMessage(req);
         }
         
-        player.sendMessage(ChatColor.RED + "━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        player.sendMessage(ChatColor.RED + "━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 0.8f);
     }
 
@@ -430,19 +485,35 @@ public class PlantationListeners implements Listener {
 
     private void checkFarmsNeedingAttention(Player player) {
         List<FarmInstance> farms = plugin.getPlantationManager().getPlayerFarms(player.getUniqueId());
-        int needingAttention = 0;
+        int readyToHarvest = 0;
         
         for (FarmInstance farm : farms) {
-            if (farm.needsAttention()) {
-                needingAttention++;
+            if (farm.isReadyForHarvest()) {
+                readyToHarvest++;
             }
         }
         
-        if (needingAttention > 0) {
-            player.sendMessage(ChatColor.YELLOW + "⚠ " + needingAttention + 
-                             " farm(s) need your attention!");
+        if (readyToHarvest > 0) {
+            player.sendMessage(ChatColor.GREEN + "✦ " + readyToHarvest + 
+                             " farm(s) ready to harvest!");
             player.sendMessage(ChatColor.GRAY + "Use /plantation to visit your farms.");
         }
+    }
+
+    private void sendHelpMessage(Player player) {
+        player.sendMessage(ChatColor.GOLD + "═══ Farming Guide ═══");
+        player.sendMessage(ChatColor.YELLOW + "How to farm:");
+        player.sendMessage(ChatColor.GRAY + "1. Wait for the harvest timer");
+        player.sendMessage(ChatColor.GRAY + "2. Right-click the farm block");
+        player.sendMessage(ChatColor.GRAY + "3. Collect fruits that drop");
+        player.sendMessage(ChatColor.GRAY + "4. Sell fruits for money");
+        player.sendMessage("");
+        player.sendMessage(ChatColor.YELLOW + "Special Materials:");
+        player.sendMessage(ChatColor.GRAY + "• Rare materials drop occasionally");
+        player.sendMessage(ChatColor.GRAY + "• Use them to unlock new farms");
+        player.sendMessage(ChatColor.GRAY + "• Higher level = better drops");
+        player.sendMessage("");
+        player.sendMessage(ChatColor.GREEN + "Tip: Use /plantation quicksell to sell fruits!");
     }
 
     private void handleFarmSelection(Player player, Block block, FarmType farmType, FarmSelectionMode mode) {

@@ -22,11 +22,9 @@ public class PlayerSettingsGUI implements InventoryHolder {
     private final Inventory inventory;
     
     // Current settings
-    private boolean autoCollect;
     private boolean hologramsEnabled;
     private boolean notificationsEnabled;
     private boolean particleEffectsEnabled;
-    private boolean dropToInventory;
 
     public PlayerSettingsGUI(FarmingPlugin plugin, Player player) {
         this.plugin = plugin;
@@ -42,16 +40,12 @@ public class PlayerSettingsGUI implements InventoryHolder {
     }
 
     private void loadCurrentSettings() {
-        autoCollect = plugin.getDatabaseManager()
-            .getPlayerBooleanSetting(player.getUniqueId(), "auto_collect_enabled", false);
         hologramsEnabled = plugin.getDatabaseManager()
             .getPlayerBooleanSetting(player.getUniqueId(), "hologram_enabled", true);
         notificationsEnabled = plugin.getDatabaseManager()
             .getPlayerBooleanSetting(player.getUniqueId(), "notifications_enabled", true);
         particleEffectsEnabled = plugin.getDatabaseManager()
             .getPlayerBooleanSetting(player.getUniqueId(), "particle_effects_enabled", true);
-        dropToInventory = plugin.getDatabaseManager()
-            .getPlayerBooleanSetting(player.getUniqueId(), "drop_to_inventory", false);
     }
 
     private void setupGUI() {
@@ -71,15 +65,6 @@ public class PlayerSettingsGUI implements InventoryHolder {
     }
 
     private void addSettingToggles() {
-        // Auto-Collect Setting
-        addToggleSetting(10, Material.HOPPER, 
-                        "&6Auto-Collect", 
-                        autoCollect,
-                        "&7Automatically drops materials",
-                        "&7when storage is full",
-                        "",
-                        "&eUseful for AFK farming!");
-
         // Holograms Setting
         addToggleSetting(12, Material.NAME_TAG,
                         "&bHolograms",
@@ -106,15 +91,6 @@ public class PlayerSettingsGUI implements InventoryHolder {
                         "&7various farm activities",
                         "",
                         "&eMakes farming more visual!");
-
-        // Drop to Inventory Setting
-        addToggleSetting(28, Material.CHEST,
-                        "&aInventory Drop",
-                        dropToInventory,
-                        "&7Materials go directly to",
-                        "&7inventory when collected",
-                        "",
-                        "&eOverflow drops on ground!");
 
         // Statistics Display
         addStatisticsItem(30);
@@ -174,13 +150,17 @@ public class PlayerSettingsGUI implements InventoryHolder {
                 lore.add(ChatColor.GRAY + "Total Farms: " + ChatColor.WHITE + 
                         rs.getInt("total_farms_created"));
                 lore.add(ChatColor.GRAY + "Total Harvests: " + ChatColor.GREEN + 
-                        rs.getLong("total_harvests"));
+                        String.format("%,d", rs.getLong("total_harvests")));
                 lore.add(ChatColor.GRAY + "Materials Collected: " + ChatColor.AQUA + 
-                        rs.getLong("total_materials_collected"));
+                        String.format("%,d", rs.getLong("total_materials_collected")));
                 lore.add(ChatColor.GRAY + "Money Spent: " + ChatColor.GOLD + 
                         plugin.getEconomyManager().formatMoney(rs.getDouble("total_money_spent")));
+                lore.add(ChatColor.GRAY + "Money Earned: " + ChatColor.GOLD + 
+                        plugin.getEconomyManager().formatMoney(rs.getDouble("total_money_earned")));
+                
+                int playMinutes = rs.getInt("play_time_minutes");
                 lore.add(ChatColor.GRAY + "Play Time: " + ChatColor.YELLOW + 
-                        rs.getInt("play_time_minutes") + " minutes");
+                        formatPlayTime(playMinutes));
             } else {
                 lore.add(ChatColor.GRAY + "No statistics available yet!");
             }
@@ -226,15 +206,15 @@ public class PlayerSettingsGUI implements InventoryHolder {
             
             lore.add("");
             
-            // Farms needing attention
-            long needingAttention = farms.stream()
-                .filter(f -> f.needsAttention())
+            // Farms ready to harvest
+            long readyToHarvest = farms.stream()
+                .filter(f -> f.isReadyForHarvest())
                 .count();
             
-            if (needingAttention > 0) {
-                lore.add(ChatColor.YELLOW + "⚠ " + needingAttention + " farms need attention!");
+            if (readyToHarvest > 0) {
+                lore.add(ChatColor.GREEN + "✦ " + readyToHarvest + " farms ready to harvest!");
             } else {
-                lore.add(ChatColor.GREEN + "✔ All farms running smoothly!");
+                lore.add(ChatColor.YELLOW + "No farms ready to harvest yet");
             }
         }
         
@@ -254,14 +234,32 @@ public class PlayerSettingsGUI implements InventoryHolder {
         List<String> tipsLore = new ArrayList<>();
         tipsLore.add(ChatColor.GRAY + "• Higher level farms produce more");
         tipsLore.add(ChatColor.GRAY + "• Upgrades stack multiplicatively");
-        tipsLore.add(ChatColor.GRAY + "• Check farms regularly for best yield");
-        tipsLore.add(ChatColor.GRAY + "• Auto-collect prevents material loss");
+        tipsLore.add(ChatColor.GRAY + "• Check farms regularly for fruits");
+        tipsLore.add(ChatColor.GRAY + "• Rare materials drop occasionally");
         tipsLore.add(ChatColor.GRAY + "• Quality upgrades increase rare drops");
+        tipsLore.add(ChatColor.GRAY + "• Use /plantation quicksell to sell");
         
         tipsMeta.setLore(tipsLore);
         tipsItem.setItemMeta(tipsMeta);
         
         inventory.setItem(25, tipsItem);
+
+        // Quick Sell Button
+        ItemStack quickSellItem = createItem(Material.EMERALD,
+                                            "&aQuick Sell",
+                                            null);
+        ItemMeta sellMeta = quickSellItem.getItemMeta();
+        
+        List<String> sellLore = new ArrayList<>();
+        sellLore.add(ChatColor.GRAY + "Open the Quick Sell menu");
+        sellLore.add(ChatColor.GRAY + "to sell your fruits!");
+        sellLore.add("");
+        sellLore.add(ChatColor.YELLOW + "Click to open!");
+        
+        sellMeta.setLore(sellLore);
+        quickSellItem.setItemMeta(sellMeta);
+        
+        inventory.setItem(22, quickSellItem);
     }
 
     private void addControlButtons() {
@@ -316,22 +314,10 @@ public class PlayerSettingsGUI implements InventoryHolder {
 
     public void toggleSetting(String setting) {
         switch (setting.toLowerCase()) {
-            case "autocollect" -> {
-                autoCollect = !autoCollect;
-                plugin.getDatabaseManager().savePlayerSetting(
-                    player.getUniqueId(), "auto_collect_enabled", autoCollect);
-                plugin.getPlantationManager().togglePlayerSetting(
-                    player.getUniqueId(), "autocollect");
-                
-                player.sendMessage(ChatColor.YELLOW + "Auto-collect " + 
-                    (autoCollect ? ChatColor.GREEN + "enabled" : ChatColor.RED + "disabled"));
-            }
             case "holograms" -> {
                 hologramsEnabled = !hologramsEnabled;
                 plugin.getDatabaseManager().savePlayerSetting(
                     player.getUniqueId(), "hologram_enabled", hologramsEnabled);
-                plugin.getPlantationManager().togglePlayerSetting(
-                    player.getUniqueId(), "holograms");
                 
                 if (!hologramsEnabled && plugin.getHologramManager() != null) {
                     plugin.getHologramManager().removePlayerHolograms(player.getUniqueId());
@@ -344,8 +330,6 @@ public class PlayerSettingsGUI implements InventoryHolder {
                 notificationsEnabled = !notificationsEnabled;
                 plugin.getDatabaseManager().savePlayerSetting(
                     player.getUniqueId(), "notifications_enabled", notificationsEnabled);
-                plugin.getPlantationManager().togglePlayerSetting(
-                    player.getUniqueId(), "notifications");
                 
                 player.sendMessage(ChatColor.YELLOW + "Notifications " + 
                     (notificationsEnabled ? ChatColor.GREEN + "enabled" : ChatColor.RED + "disabled"));
@@ -354,21 +338,9 @@ public class PlayerSettingsGUI implements InventoryHolder {
                 particleEffectsEnabled = !particleEffectsEnabled;
                 plugin.getDatabaseManager().savePlayerSetting(
                     player.getUniqueId(), "particle_effects_enabled", particleEffectsEnabled);
-                plugin.getPlantationManager().togglePlayerSetting(
-                    player.getUniqueId(), "particles");
                 
                 player.sendMessage(ChatColor.YELLOW + "Particle effects " + 
                     (particleEffectsEnabled ? ChatColor.GREEN + "enabled" : ChatColor.RED + "disabled"));
-            }
-            case "inventory" -> {
-                dropToInventory = !dropToInventory;
-                plugin.getDatabaseManager().savePlayerSetting(
-                    player.getUniqueId(), "drop_to_inventory", dropToInventory);
-                plugin.getPlantationManager().togglePlayerSetting(
-                    player.getUniqueId(), "inventory");
-                
-                player.sendMessage(ChatColor.YELLOW + "Drop to inventory " + 
-                    (dropToInventory ? ChatColor.GREEN + "enabled" : ChatColor.RED + "disabled"));
             }
         }
         
@@ -377,18 +349,14 @@ public class PlayerSettingsGUI implements InventoryHolder {
 
     public void resetSettings() {
         // Reset all settings to default
-        autoCollect = false;
         hologramsEnabled = true;
         notificationsEnabled = true;
         particleEffectsEnabled = true;
-        dropToInventory = false;
         
         // Save to database
-        plugin.getDatabaseManager().savePlayerSetting(player.getUniqueId(), "auto_collect_enabled", false);
         plugin.getDatabaseManager().savePlayerSetting(player.getUniqueId(), "hologram_enabled", true);
         plugin.getDatabaseManager().savePlayerSetting(player.getUniqueId(), "notifications_enabled", true);
         plugin.getDatabaseManager().savePlayerSetting(player.getUniqueId(), "particle_effects_enabled", true);
-        plugin.getDatabaseManager().savePlayerSetting(player.getUniqueId(), "drop_to_inventory", false);
         
         player.sendMessage(ChatColor.GREEN + "✔ All settings have been reset to default!");
         player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 0.8f);
@@ -399,6 +367,19 @@ public class PlayerSettingsGUI implements InventoryHolder {
     public void refresh() {
         inventory.clear();
         setupGUI();
+    }
+
+    private String formatPlayTime(int minutes) {
+        int hours = minutes / 60;
+        int days = hours / 24;
+        
+        if (days > 0) {
+            return String.format("%dd %dh", days, hours % 24);
+        } else if (hours > 0) {
+            return String.format("%dh %dm", hours, minutes % 60);
+        } else {
+            return minutes + "m";
+        }
     }
 
     private ItemStack createItem(Material material, String name, List<String> lore) {
