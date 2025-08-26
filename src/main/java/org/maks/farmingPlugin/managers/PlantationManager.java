@@ -304,104 +304,90 @@ public class PlantationManager {
      * Process farm harvest - now drops fruits commonly and materials rarely
      */
     public void processFarmHarvest(FarmInstance farm) {
-        if (!farm.isReadyForHarvest()) {
-            return;
-        }
-
         Player player = Bukkit.getPlayer(farm.getOwnerId());
         if (player == null) return;
 
+        long currentTime = System.currentTimeMillis();
+        long growthTime = farm.getAdjustedGrowthTime();
+        long cycles = (currentTime - farm.getLastHarvest()) / growthTime;
+        if (cycles <= 0) return;
+        cycles = Math.min(cycles, farm.getMaxStorage());
+
         Random random = new Random();
         Location dropLoc = farm.getLocation().clone().add(0.5, 1.5, 0.5);
-        
-        // Get fruit type for this farm
         FruitType fruitType = FruitType.getForFarm(farm.getFarmType());
-        
-        // Calculate fruit drops (common)
-        int baseFruitAmount = 3 + random.nextInt(3); // 3-5 base
         double levelMultiplier = 1.0 + (farm.getLevel() - 1) * 0.2;
-        int fruitAmount = (int)(baseFruitAmount * levelMultiplier);
-        
-        // Drop fruits
-        if (fruitType != null && fruitAmount > 0) {
-            ItemStack fruitItem = fruitType.createItem(fruitAmount);
-            player.getWorld().dropItemNaturally(dropLoc, fruitItem);
-            
-            // Show collection message
-            player.sendMessage(ChatColor.GREEN + "✦ Harvested " + fruitAmount + "x " + 
-                             fruitType.getDisplayName() + ChatColor.GREEN + "!");
-            
-            // Particles for fruit harvest
-            player.getWorld().spawnParticle(
-                org.bukkit.Particle.VILLAGER_HAPPY,
-                dropLoc,
-                20, 0.5, 0.5, 0.5, 0.1
-            );
-        }
-        
-        // Check for special material drops (rare)
+        int totalFruit = 0;
+
         String farmKey = farm.getFarmType().getId() + "_" + farm.getInstanceId();
         Map<String, Long> playerSpecialDrops = lastSpecialDropTimes.get(farm.getOwnerId());
         long lastSpecialDrop = playerSpecialDrops.getOrDefault(farmKey, 0L);
-        long currentTime = System.currentTimeMillis();
-        
-        // Special drops every 5-10 harvests randomly
-        boolean shouldDropSpecial = false;
-        long timeSinceLastSpecial = currentTime - lastSpecialDrop;
-        long specialDropCooldown = 1000L * 60 * 30; // 30 minutes minimum between special drops
-        
-        if (timeSinceLastSpecial > specialDropCooldown) {
-            // 20% chance for special drop after cooldown
-            shouldDropSpecial = random.nextDouble() < 0.2;
-        }
-        
-        if (shouldDropSpecial) {
-            List<MaterialDrop> drops = farmDrops.get(farm.getFarmType());
-            if (drops != null) {
-                MaterialManager mm = plugin.getMaterialManager();
-                boolean droppedSomething = false;
-                
-                for (MaterialDrop drop : drops) {
-                    double chance = drop.getRate() * levelMultiplier;
-                    if (random.nextDouble() * 100.0 <= chance) {
-                        ItemStack materialItem = mm.createMaterial(drop.getMaterialType(), drop.getTier(), 1);
-                        player.getWorld().dropItemNaturally(dropLoc, materialItem);
-                        droppedSomething = true;
-                        
-                        // Special drop notification
-                        player.sendMessage(ChatColor.GOLD + "★ RARE DROP! " + ChatColor.YELLOW + 
-                                         drop.getMaterialType().getDisplayName() + " Tier " + drop.getTier());
-                        player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.5f);
-                        
-                        // Special particles
-                        player.getWorld().spawnParticle(
-                            org.bukkit.Particle.TOTEM,
-                            dropLoc,
-                            30, 0.5, 1, 0.5, 0.1
-                        );
+        long specialDropCooldown = 1000L * 60 * 30; // 30 minutes
+        MaterialManager mm = plugin.getMaterialManager();
+
+        for (int i = 0; i < cycles; i++) {
+            long cycleTime = farm.getLastHarvest() + growthTime * (i + 1);
+
+            int baseFruitAmount = 3 + random.nextInt(3); // 3-5 base
+            int fruitAmount = (int) (baseFruitAmount * levelMultiplier);
+            if (fruitType != null && fruitAmount > 0) {
+                ItemStack fruitItem = fruitType.createItem(fruitAmount);
+                player.getWorld().dropItemNaturally(dropLoc, fruitItem);
+                totalFruit += fruitAmount;
+            }
+
+            long timeSinceLastSpecial = cycleTime - lastSpecialDrop;
+            if (timeSinceLastSpecial > specialDropCooldown) {
+                List<MaterialDrop> drops = farmDrops.get(farm.getFarmType());
+                if (drops != null) {
+                    boolean droppedSomething = false;
+                    for (MaterialDrop drop : drops) {
+                        double chance = drop.getRate() * levelMultiplier;
+                        if (random.nextDouble() * 100.0 <= chance) {
+                            ItemStack materialItem = mm.createMaterial(drop.getMaterialType(), drop.getTier(), 1);
+                            player.getWorld().dropItemNaturally(dropLoc, materialItem);
+                            droppedSomething = true;
+
+                            player.sendMessage(ChatColor.GOLD + "★ RARE DROP! " + ChatColor.YELLOW +
+                                    drop.getMaterialType().getDisplayName() + " Tier " + drop.getTier());
+                            player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.5f);
+
+                            player.getWorld().spawnParticle(
+                                    org.bukkit.Particle.TOTEM,
+                                    dropLoc,
+                                    30, 0.5, 1, 0.5, 0.1
+                            );
+                        }
+                    }
+                    if (droppedSomething) {
+                        lastSpecialDrop = cycleTime;
+                        playerSpecialDrops.put(farmKey, lastSpecialDrop);
                     }
                 }
-                
-                if (droppedSomething) {
-                    playerSpecialDrops.put(farmKey, currentTime);
-                }
             }
+
+            farm.incrementHarvests();
+            farm.addExp(10 + fruitAmount);
         }
 
-        // Update harvest time and stats
-        farm.setLastHarvest(System.currentTimeMillis());
-        farm.incrementHarvests();
-        farm.addExp(10 + fruitAmount);
-        
-        // Check for level up
+        if (fruitType != null && totalFruit > 0) {
+            player.sendMessage(ChatColor.GREEN + "✦ Harvested " + totalFruit + "x " +
+                    fruitType.getDisplayName() + ChatColor.GREEN + "!");
+            player.getWorld().spawnParticle(
+                    org.bukkit.Particle.VILLAGER_HAPPY,
+                    dropLoc,
+                    20, 0.5, 0.5, 0.5, 0.1
+            );
+        }
+
+        farm.setLastHarvest(currentTime);
+
         checkLevelUp(farm);
-        
-        // Update hologram
+
         if (plugin.getHologramManager() != null) {
             plugin.getHologramManager().updateHologram(farm);
         }
-        
-        // Play harvest sound
+
         player.playSound(dropLoc, Sound.ITEM_BUNDLE_DROP_CONTENTS, 1.0f, 1.0f);
     }
 

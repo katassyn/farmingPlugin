@@ -50,32 +50,7 @@ public class OfflineGrowthManager {
     }
 
     public void processOfflineGrowth(FarmInstance farm) {
-        if (farm == null) return;
-
-        long currentTime = System.currentTimeMillis();
-        long lastHarvest = farm.getLastHarvest();
-        long growthTime = plantationManager.getHarvestIntervalMillis(farm) / farm.getEfficiency();
-        
-        long timeSinceHarvest = currentTime - lastHarvest;
-        
-        if (timeSinceHarvest >= growthTime) {
-            long cycles = timeSinceHarvest / growthTime;
-            
-            cycles = Math.min(cycles, 100);
-            
-            for (int i = 0; i < cycles; i++) {
-                if (farm.canStoreMore()) {
-                    plantationManager.processFarmHarvest(farm);
-                } else {
-                    break;
-                }
-            }
-            
-            if (cycles > 0) {
-                long newLastHarvest = lastHarvest + (cycles * growthTime);
-                farm.setLastHarvest(newLastHarvest);
-            }
-        }
+        // Growth is calculated dynamically during player harvests.
     }
 
     public void onPlayerJoin(UUID playerId) {

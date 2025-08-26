@@ -229,8 +229,8 @@ public class PlantationAreaManager {
         );
         if (pathMat == null) pathMat = Material.DIRT_PATH;
 
-        for (int z = z1 + 1; z < z2; z++) {
-            world.getBlockAt(x1 + 8, y, z).setType(pathMat);
+        for (int z = z1 + 5; z < z2; z++) {
+            world.getBlockAt(x1 + 8, y - 1, z).setType(pathMat);
         }
 
         // Add some decorative elements
@@ -331,7 +331,7 @@ public class PlantationAreaManager {
                 if (ownedKeys.contains(k)) {
                     // Player owns this farm - place the farm block
                     placeFarmBlock(farmLoc, type);
-                    
+
                     // Update hologram
                     FarmInstance farm = plugin.getPlantationManager()
                         .getFarmInstance(uid, type, i + 1);
@@ -341,8 +341,15 @@ public class PlantationAreaManager {
                             plugin.getHologramManager().updateHologram(farm);
                         }
                     }
-                } else if (type == FarmType.BERRY_ORCHARDS || 
-                          plugin.getDatabaseManager().isFarmUnlocked(uid, type.getId())) {
+                } else if (type == FarmType.BERRY_ORCHARDS) {
+                    if (i == 0) {
+                        // First berry farm is free
+                        placeFarmBlock(farmLoc, type);
+                    } else {
+                        // Additional berry farms start locked
+                        placeLockedSign(farmLoc, type, i + 1);
+                    }
+                } else if (plugin.getDatabaseManager().isFarmUnlocked(uid, type.getId())) {
                     // Farm type unlocked but instance not created - show farm block dim
                     placeFarmBlock(farmLoc, type);
                 } else {

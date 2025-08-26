@@ -225,7 +225,7 @@ public class PlantationListeners implements Listener {
             }, 2L);
             player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
         } else {
-            player.sendMessage(ChatColor.RED + "You don't meet the requirements to unlock this farm.");
+            showUnlockRequirements(player, type);
             player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 1f, 0.8f);
         }
     }
