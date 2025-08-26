@@ -170,7 +170,7 @@ public class HologramManager {
     /**
      * Update all holograms for online players
      */
-    private void updateAllHolograms() {
+    public void updateAllHolograms() {
         for (Player player : Bukkit.getOnlinePlayers()) {
             List<FarmInstance> farms = plugin.getPlantationManager().getPlayerFarms(player.getUniqueId());
             

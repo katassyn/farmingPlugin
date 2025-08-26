@@ -6,7 +6,9 @@ import org.bukkit.World;
 import org.maks.farmingPlugin.FarmingPlugin;
 
 import java.sql.*;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.logging.Level;
 
@@ -41,12 +43,21 @@ public class DatabaseManager {
                     return;
                 }
 
-                Class.forName("com.mysql.cj.jdbc.Driver");
-                connection = DriverManager.getConnection(
-                    "jdbc:mysql://" + host + ":" + port + "/" + database + 
-                    "?useSSL=false&serverTimezone=UTC&autoReconnect=true",
-                    username, password
-                );
+                // Try relocated driver first, then fall back to original
+                try {
+                    Class.forName("org.maks.farmingPlugin.libs.mysql.cj.jdbc.Driver");
+                    plugin.getLogger().info("Using relocated MySQL driver");
+                } catch (ClassNotFoundException e) {
+                    plugin.getLogger().warning("Relocated MySQL driver not found, trying original...");
+                    Class.forName("com.mysql.cj.jdbc.Driver");
+                    plugin.getLogger().info("Using original MySQL driver");
+                }
+                
+                String jdbcUrl = "jdbc:mysql://" + host + ":" + port + "/" + database + 
+                    "?useSSL=false&serverTimezone=UTC&autoReconnect=true";
+                plugin.getLogger().info("Connecting to database: " + host + ":" + port + "/" + database);
+                
+                connection = DriverManager.getConnection(jdbcUrl, username, password);
                 
                 // Enable auto-reconnect
                 connection.setAutoCommit(true);
@@ -255,11 +266,83 @@ public class DatabaseManager {
             
             plugin.getLogger().info("All database tables created successfully!");
             
+            // Migrate existing tables if needed
+            migrateExistingTables();
+            
             // Create stored procedures for complex operations
             createStoredProcedures();
             
         } catch (SQLException e) {
             plugin.getLogger().log(Level.SEVERE, "Could not create database tables!", e);
+        }
+    }
+
+    private void migrateExistingTables() {
+        try (Connection conn = getConnection()) {
+            DatabaseMetaData metaData = conn.getMetaData();
+            
+            // Check if player_plantations table exists
+            ResultSet tables = metaData.getTables(null, null, "player_plantations", null);
+            if (!tables.next()) {
+                tables.close();
+                plugin.getLogger().info("player_plantations table doesn't exist yet, skipping migration");
+                return;
+            }
+            tables.close();
+            
+            // Check and add missing columns to player_plantations table
+            ResultSet columns = metaData.getColumns(null, null, "player_plantations", null);
+            Set<String> existingColumns = new HashSet<>();
+            while (columns.next()) {
+                existingColumns.add(columns.getString("COLUMN_NAME").toLowerCase());
+            }
+            columns.close();
+            
+            if (existingColumns.isEmpty()) {
+                plugin.getLogger().info("player_plantations table is empty or couldn't read columns, skipping migration");
+                return;
+            }
+            
+            try (Statement stmt = conn.createStatement()) {
+                int migrationsRun = 0;
+                
+                // Add total_harvests column if missing
+                if (!existingColumns.contains("total_harvests")) {
+                    stmt.executeUpdate("ALTER TABLE player_plantations ADD COLUMN total_harvests INT DEFAULT 0");
+                    plugin.getLogger().info("Added missing column 'total_harvests' to player_plantations table");
+                    migrationsRun++;
+                }
+                
+                // Add exp column if missing
+                if (!existingColumns.contains("exp")) {
+                    stmt.executeUpdate("ALTER TABLE player_plantations ADD COLUMN exp INT DEFAULT 0");
+                    plugin.getLogger().info("Added missing column 'exp' to player_plantations table");
+                    migrationsRun++;
+                }
+                
+                // Add created_at column if missing
+                if (!existingColumns.contains("created_at")) {
+                    stmt.executeUpdate("ALTER TABLE player_plantations ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
+                    plugin.getLogger().info("Added missing column 'created_at' to player_plantations table");
+                    migrationsRun++;
+                }
+                
+                // Add updated_at column if missing
+                if (!existingColumns.contains("updated_at")) {
+                    stmt.executeUpdate("ALTER TABLE player_plantations ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
+                    plugin.getLogger().info("Added missing column 'updated_at' to player_plantations table");
+                    migrationsRun++;
+                }
+                
+                if (migrationsRun > 0) {
+                    plugin.getLogger().info("Database migration completed successfully! " + migrationsRun + " columns added.");
+                } else {
+                    plugin.getLogger().info("Database schema is up to date, no migration needed.");
+                }
+            }
+            
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.WARNING, "Could not migrate existing database tables: " + e.getMessage(), e);
         }
     }
 

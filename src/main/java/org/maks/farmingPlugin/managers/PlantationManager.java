@@ -155,8 +155,23 @@ public class PlantationManager {
                         int level = rs.getInt("level");
                         int efficiency = rs.getInt("efficiency");
                         long lastHarvest = rs.getLong("last_harvest");
-                        int totalHarvests = rs.getInt("total_harvests");
-                        int exp = rs.getInt("exp");
+                        
+                        // Handle missing columns gracefully (for database migration)
+                        int totalHarvests = 0;
+                        try {
+                            totalHarvests = rs.getInt("total_harvests");
+                        } catch (SQLException e) {
+                            // Column doesn't exist yet, use default value
+                            plugin.getLogger().warning("Column 'total_harvests' not found, using default value 0");
+                        }
+                        
+                        int exp = 0;
+                        try {
+                            exp = rs.getInt("exp");
+                        } catch (SQLException e) {
+                            // Column doesn't exist yet, use default value
+                            plugin.getLogger().warning("Column 'exp' not found, using default value 0");
+                        }
                         
                         // Load stored materials
                         Map<String, Integer> storedMaterials = loadStoredMaterials(playerUuid, farmType, instanceId);
