@@ -52,10 +52,14 @@ public final class FarmingPlugin extends JavaPlugin {
                 startMetrics();
             }
             
-            getLogger().info("═══════════════════════════════════════");
+            getLogger().info("╔════════════════════════════════════╗");
             getLogger().info("    Farming Plugin - Ready!");
             getLogger().info("    " + getServer().getOnlinePlayers().size() + " players loaded");
-            getLogger().info("═══════════════════════════════════════");
+            if (getConfig().getBoolean("test_mode.enabled", false)) {
+                getLogger().warning("    TEST MODE ENABLED - Farms grow in " +
+                                  getConfig().getInt("test_mode.growth_minutes", 1) + " minute(s)!");
+            }
+            getLogger().info("╚════════════════════════════════════╝");
             
         } catch (Exception e) {
             getLogger().log(Level.SEVERE, "Failed to initialize plugin!", e);

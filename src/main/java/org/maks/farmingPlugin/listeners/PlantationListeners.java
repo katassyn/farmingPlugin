@@ -137,7 +137,7 @@ public class PlantationListeners implements Listener {
             .getFarmInstanceFromLocation(player.getUniqueId(), farmType, block.getLocation());
 
         if (instanceId == -1) {
-            player.sendMessage(ChatColor.RED + "Użyj jednego z oznaczonych miejsc dla: "
+            player.sendMessage(ChatColor.RED + "Please use one of the marked spots for "
                                + farmType.getDisplayName() + ".");
             player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 0.8f);
             return;
@@ -225,7 +225,7 @@ public class PlantationListeners implements Listener {
             }, 2L);
             player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
         } else {
-            player.sendMessage(ChatColor.RED + "Brakuje wymagań żeby odblokować tę farmę.");
+            player.sendMessage(ChatColor.RED + "You don't meet the requirements to unlock this farm.");
             player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 1f, 0.8f);
         }
     }
@@ -458,9 +458,9 @@ public class PlantationListeners implements Listener {
                 if (owner != null) {
                     event.setCancelled(true);
                     if (owner.equals(player.getUniqueId())) {
-                        player.sendMessage(ChatColor.RED + "Nie możesz ręcznie stawiać bloków farm. Korzystaj z oznaczonych slotów.");
+                        player.sendMessage(ChatColor.RED + "You cannot manually place farm blocks. Use the designated slots.");
                     } else {
-                        player.sendMessage(ChatColor.RED + "Nie możesz budować na cudzej plantacji!");
+                        player.sendMessage(ChatColor.RED + "You cannot build on another player's plantation!");
                     }
                 }
             }
