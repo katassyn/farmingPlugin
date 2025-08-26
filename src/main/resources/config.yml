@@ -30,11 +30,11 @@ plantations:
       x: 1000
       y: 100
       z: 1000
-      plot:
-        width: 17
-        depth: 15
-        fence_material: OAK_FENCE
-        gate_material: OAK_FENCE_GATE
+    plot:
+      width: 17
+      depth: 15
+      fence_material: OAK_FENCE
+      gate_material: OAK_FENCE_GATE
     spacing: 20
     grid:
       rows: 10
