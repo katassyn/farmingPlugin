@@ -29,8 +29,9 @@ public class OfflineGrowthManager {
                 processAllFarmGrowth();
             }
         };
-        
-        growthTask.runTaskTimerAsynchronously(plugin, 20L * 60L, 20L * 60L);
+
+        // Run synchronously to avoid async world interactions
+        growthTask.runTaskTimer(plugin, 20L * 60L, 20L * 60L);
     }
 
     public void processAllFarmGrowth() {
@@ -50,28 +51,37 @@ public class OfflineGrowthManager {
     }
 
     public void processOfflineGrowth(FarmInstance farm) {
-        // Growth is calculated dynamically during player harvests.
+        // Only update growth state; harvesting happens when player interacts
+        if (farm.isReadyForHarvest()) {
+            return;
+        }
+        // Additional non-world updates could go here
     }
 
     public void onPlayerJoin(UUID playerId) {
         playerLastSeen.put(playerId, System.currentTimeMillis());
-        
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+
+        // Process on main thread after short delay
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
             try {
                 for (FarmInstance farm : plantationManager.getPlayerFarms(playerId)) {
                     processOfflineGrowth(farm);
                 }
-                
-                plantationManager.savePlayerData(playerId);
+
+                // Save data asynchronously
+                Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                    plantationManager.savePlayerData(playerId);
+                });
             } catch (Exception e) {
                 plugin.getLogger().warning("Error processing offline growth for player " + playerId + ": " + e.getMessage());
             }
-        });
+        }, 20L);
     }
 
     public void onPlayerQuit(UUID playerId) {
         playerLastSeen.put(playerId, System.currentTimeMillis());
-        
+
+        // Save player data asynchronously
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 plantationManager.savePlayerData(playerId);

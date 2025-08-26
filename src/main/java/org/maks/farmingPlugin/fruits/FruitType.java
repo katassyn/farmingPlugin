@@ -90,8 +90,6 @@ public enum FruitType {
             loreList.add("");
             loreList.add(ChatColor.YELLOW + "⚡ Quick Sell Value:");
             loreList.add(ChatColor.GOLD + "$" + String.format("%,d", sellPrice) + " each");
-            loreList.add("");
-            loreList.add(ChatColor.DARK_GRAY + "Right-click to eat!");
 
             meta.setLore(loreList);
 

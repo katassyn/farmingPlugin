@@ -335,34 +335,49 @@ public class PlantationListeners implements Listener {
     }
 
     private void handleQuickSellGUIClick(Player player, QuickSellGUI gui, InventoryClickEvent event) {
-        int slot = event.getSlot();
+        if (event.getClickedInventory() == null) return;
+
+        int rawSlot = event.getRawSlot();
         ItemStack clicked = event.getCurrentItem();
         ItemStack cursor = event.getCursor();
-        
-        // Handle selling area (slots 10-34, excluding borders)
-        if (gui.isSellingSlot(slot)) {
-            // Allow placing fruits
-            if (cursor != null && cursor.getType() != Material.AIR) {
-                if (!gui.isFruit(cursor)) {
-                    event.setCancelled(true);
-                    player.sendMessage(ChatColor.RED + "Only fruits can be placed here!");
-                    player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
-                    return;
-                }
+
+        // Allow interaction with the player's own inventory
+        if (event.getClickedInventory().equals(player.getInventory())) {
+            // Prevent shift-clicking non-fruits into the GUI
+            if (event.isShiftClick() && clicked != null && !gui.isFruit(clicked)) {
+                event.setCancelled(true);
+                player.sendMessage(ChatColor.RED + "Only fruits can be sold here!");
+                player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+                return;
             }
-            // Update display after change
+
+            if (event.isShiftClick()) {
+                plugin.getServer().getScheduler().runTaskLater(plugin, gui::updateTotalDisplay, 1L);
+            }
+            return; // Don't cancel normal inventory actions
+        }
+
+        // Handle selling area (slots 10-34, excluding borders)
+        if (gui.isSellingSlot(rawSlot)) {
+            if (cursor != null && cursor.getType() != Material.AIR && !gui.isFruit(cursor)) {
+                event.setCancelled(true);
+                player.sendMessage(ChatColor.RED + "Only fruits can be placed here!");
+                player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+                return;
+            }
+
             plugin.getServer().getScheduler().runTaskLater(plugin, gui::updateTotalDisplay, 1L);
             return;
         }
-        
+
         // Cancel clicks on control buttons and borders
         event.setCancelled(true);
-        
+
         // Handle control buttons
         if (clicked == null || !clicked.hasItemMeta()) return;
-        
+
         String displayName = ChatColor.stripColor(clicked.getItemMeta().getDisplayName());
-        
+
         if (displayName.equals("SELL ALL")) {
             gui.sellAll();
         } else if (displayName.equals("Close")) {
