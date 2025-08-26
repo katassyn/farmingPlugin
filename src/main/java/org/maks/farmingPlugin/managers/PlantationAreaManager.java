@@ -1,12 +1,10 @@
 package org.maks.farmingPlugin.managers;
 
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
-import org.bukkit.block.Sign;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
 import org.maks.farmingPlugin.FarmingPlugin;
@@ -17,6 +15,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.*;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class PlantationAreaManager {
@@ -166,73 +165,22 @@ public class PlantationAreaManager {
     }
 
     public PlantationArea getOrCreateArea(Player player) {
-        return areas.computeIfAbsent(player.getUniqueId(), uuid -> {
+        PlantationArea area = areas.computeIfAbsent(player.getUniqueId(), uuid -> {
             DatabaseManager db = plugin.getDatabaseManager();
             Location origin = db.loadPlayerPlot(uuid).orElseGet(() -> allocateNewPlot(uuid));
             buildPlotStructure(origin);
-            placeFarmBlocks(origin, uuid); // Place all farm blocks on first creation
             Map<FarmType, Map<Integer, FarmAnchor>> anchors = new EnumMap<>(FarmType.class);
             return new PlantationArea(uuid, origin, anchors, plotWidth, plotDepth);
         });
+        ensureAllAnchors(player.getUniqueId());
+        return area;
     }
 
-    /**
-     * Place all farm type blocks with unlock signs
-     */
-    private void placeFarmBlocks(Location origin, UUID playerUuid) {
-        if (world == null) return;
-
-        // Place Berry Orchards (always unlocked)
-        List<int[]> berryPositions = FARM_LAYOUT.get(FarmType.BERRY_ORCHARDS);
-        if (berryPositions != null) {
-            for (int i = 0; i < berryPositions.size(); i++) {
-                int[] pos = berryPositions.get(i);
-                Location farmLoc = origin.clone().add(pos[0], 0, pos[1]);
-                Block block = world.getBlockAt(farmLoc);
-                block.setType(FarmType.BERRY_ORCHARDS.getBlockType());
+    public void ensureAllAnchors(UUID owner) {
+        for (FarmType type : FarmType.values()) {
+            for (int i = 1; i <= type.getMaxInstances(); i++) {
+                getOrCreateFarmAnchor(owner, type, i);
             }
-        }
-
-        // Place other farm types with signs (locked initially)
-        for (FarmType farmType : FarmType.values()) {
-            if (farmType == FarmType.BERRY_ORCHARDS) continue; // Already placed
-
-            List<int[]> positions = FARM_LAYOUT.get(farmType);
-            if (positions != null && !positions.isEmpty()) {
-                // Place first instance location with a sign
-                int[] pos = positions.get(0);
-                Location farmLoc = origin.clone().add(pos[0], 0, pos[1]);
-                Block block = world.getBlockAt(farmLoc);
-
-                // Place a sign block instead of farm block for locked farms
-                block.setType(Material.OAK_SIGN);
-
-                // Set sign text
-                if (block.getState() instanceof Sign sign) {
-                    sign.setLine(0, ChatColor.DARK_RED + "§l[LOCKED]");
-                    sign.setLine(1, ChatColor.GOLD + farmType.getDisplayName());
-                    sign.setLine(2, ChatColor.YELLOW + "Right-click");
-                    sign.setLine(3, ChatColor.YELLOW + "to unlock");
-                    sign.update();
-                }
-            }
-        }
-    }
-
-    /**
-     * Update farm block when unlocked
-     */
-    public void unlockFarmType(UUID playerUuid, FarmType farmType) {
-        PlantationArea area = areas.get(playerUuid);
-        if (area == null) return;
-
-        List<int[]> positions = FARM_LAYOUT.get(farmType);
-        if (positions != null && !positions.isEmpty()) {
-            // Replace sign with actual farm block for first instance
-            int[] pos = positions.get(0);
-            Location farmLoc = area.origin.clone().add(pos[0], 0, pos[1]);
-            Block block = world.getBlockAt(farmLoc);
-            block.setType(farmType.getBlockType());
         }
     }
 
@@ -249,6 +197,9 @@ public class PlantationAreaManager {
 
         FarmAnchor anchor = area.getFarmAnchor(type, instanceId);
         if (anchor != null) {
+            if (world != null) {
+                world.getBlockAt(anchor.location).setType(type.getBlockType());
+            }
             return anchor.location;
         }
 
@@ -264,11 +215,7 @@ public class PlantationAreaManager {
         // Place the farm block
         if (world != null) {
             Block block = world.getBlockAt(anchorLoc);
-            // Only place if it's unlocked or Berry Orchards
-            if (type == FarmType.BERRY_ORCHARDS ||
-                plugin.getDatabaseManager().isFarmUnlocked(owner, type.getId())) {
-                block.setType(type.getBlockType());
-            }
+            block.setType(type.getBlockType());
         }
 
         // Save anchor to area and database
@@ -417,38 +364,6 @@ public class PlantationAreaManager {
             result.put(typeEntry.getKey(), locations);
         }
         return result;
-    }
-
-    /**
-     * Check if a location is a farm sign (for unlocking)
-     */
-    public boolean isFarmSign(Location loc) {
-        Block block = loc.getBlock();
-        return block.getState() instanceof Sign;
-    }
-
-    /**
-     * Get farm type from sign location
-     */
-    public FarmType getFarmTypeFromSign(Location loc) {
-        for (PlantationArea area : areas.values()) {
-            for (FarmType type : FarmType.values()) {
-                if (type == FarmType.BERRY_ORCHARDS) continue;
-
-                List<int[]> positions = FARM_LAYOUT.get(type);
-                if (positions != null && !positions.isEmpty()) {
-                    int[] pos = positions.get(0);
-                    Location signLoc = area.origin.clone().add(pos[0], 0, pos[1]);
-
-                    if (signLoc.getBlockX() == loc.getBlockX() &&
-                        signLoc.getBlockY() == loc.getBlockY() &&
-                        signLoc.getBlockZ() == loc.getBlockZ()) {
-                        return type;
-                    }
-                }
-            }
-        }
-        return null;
     }
 
     public static class PlantationArea {
