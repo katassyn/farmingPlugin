@@ -57,7 +57,7 @@ public class PlantationManager {
         farmDrops.put(FarmType.BERRY_ORCHARDS, Arrays.asList(
             new MaterialDrop(MaterialType.PLANT_FIBER, 1, 15.0),
             new MaterialDrop(MaterialType.PLANT_FIBER, 2, 5.0),
-            new MaterialDrop(MaterialType.HERBAL_EXTRACT, 1, 3.0)
+            new MaterialDrop(MaterialType.HERB_EXTRACT, 1, 3.0)
         ));
 
         farmDrops.put(FarmType.MELON_GROVES, Arrays.asList(
@@ -83,9 +83,9 @@ public class PlantationManager {
         ));
 
         farmDrops.put(FarmType.MYSTIC_GARDENS, Arrays.asList(
-            new MaterialDrop(MaterialType.HERBAL_EXTRACT, 1, 8.0),
-            new MaterialDrop(MaterialType.HERBAL_EXTRACT, 2, 5.0),
-            new MaterialDrop(MaterialType.HERBAL_EXTRACT, 3, 2.0),
+            new MaterialDrop(MaterialType.HERB_EXTRACT, 1, 8.0),
+            new MaterialDrop(MaterialType.HERB_EXTRACT, 2, 5.0),
+            new MaterialDrop(MaterialType.HERB_EXTRACT, 3, 2.0),
             new MaterialDrop(MaterialType.BEESWAX_CHUNK, 1, 6.0),
             new MaterialDrop(MaterialType.BEESWAX_CHUNK, 2, 3.0)
         ));
@@ -110,7 +110,7 @@ public class PlantationManager {
         // Load unlock requirements (unchanged)
         Map<MaterialType, Integer> melonReq = new HashMap<>();
         melonReq.put(MaterialType.PLANT_FIBER, 50);
-        melonReq.put(MaterialType.HERBAL_EXTRACT, 10);
+        melonReq.put(MaterialType.HERB_EXTRACT, 10);
         unlockRequirements.put(FarmType.MELON_GROVES, melonReq);
 
         Map<MaterialType, Integer> fungalReq = new HashMap<>();
@@ -130,7 +130,7 @@ public class PlantationManager {
         unlockRequirements.put(FarmType.MYSTIC_GARDENS, mysticReq);
 
         Map<MaterialType, Integer> mangroveReq = new HashMap<>();
-        mangroveReq.put(MaterialType.HERBAL_EXTRACT, 25);
+        mangroveReq.put(MaterialType.HERB_EXTRACT, 25);
         mangroveReq.put(MaterialType.BEESWAX_CHUNK, 15);
         mangroveReq.put(MaterialType.COMPOST_DUST, 10);
         unlockRequirements.put(FarmType.ANCIENT_MANGROVES, mangroveReq);
@@ -138,7 +138,7 @@ public class PlantationManager {
         Map<MaterialType, Integer> desertReq = new HashMap<>();
         desertReq.put(MaterialType.DRUIDIC_ESSENCE, 10);
         desertReq.put(MaterialType.BEESWAX_CHUNK, 15);
-        desertReq.put(MaterialType.HERBAL_EXTRACT, 8);
+        desertReq.put(MaterialType.HERB_EXTRACT, 8);
         unlockRequirements.put(FarmType.DESERT_SANCTUARIES, desertReq);
     }
 

@@ -7,7 +7,7 @@ public enum MaterialType {
     SEED_POUCH("seed_pouch", "Seed Pouch", Material.WHEAT_SEEDS, MaterialRarity.BASIC),
     COMPOST_DUST("compost_dust", "Compost Dust", Material.BONE_MEAL, MaterialRarity.BASIC),
     
-    HERBAL_EXTRACT("herbal_extract", "Herbal Extract", Material.SPIDER_EYE, MaterialRarity.RARE),
+    HERB_EXTRACT("herb_extract", "Herbal Extract", Material.SPIDER_EYE, MaterialRarity.RARE),
     MUSHROOM_SPORES("mushroom_spores", "Mushroom Spores", Material.BROWN_MUSHROOM, MaterialRarity.RARE),
     BEESWAX_CHUNK("beeswax_chunk", "Beeswax Chunk", Material.BOOK, MaterialRarity.RARE),
     

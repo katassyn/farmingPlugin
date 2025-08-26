@@ -5,6 +5,7 @@ import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Sound;
+import org.bukkit.GameMode;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.Sign;
@@ -20,6 +21,7 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.Event;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
@@ -92,11 +94,17 @@ public class PlantationListeners implements Listener {
     @EventHandler
     public void onPlayerInteract(PlayerInteractEvent event) {
         if (event.getAction() != Action.RIGHT_CLICK_BLOCK) return;
-        
+
         Player player = event.getPlayer();
         Block block = event.getClickedBlock();
-        
+
         if (block == null) return;
+
+        // Allow Adventure mode players to interact with farm blocks
+        if (player.getGameMode() == GameMode.ADVENTURE) {
+            event.setUseInteractedBlock(Event.Result.ALLOW);
+            event.setUseItemInHand(Event.Result.DENY);
+        }
         
         // Check for cooldown
         if (isOnCooldown(player)) {
