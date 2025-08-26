@@ -25,10 +25,17 @@ public class DatabaseManager {
     }
 
     private void loadDatabaseSettings() {
-        host = plugin.getConfig().getString("database.host", "localhost");
+        // Reload configuration to ensure we're reading latest values
+        plugin.reloadConfig();
+
+        // Support both legacy and new config keys
+        host = plugin.getConfig().getString("database.host",
+            plugin.getConfig().getString("database.hostname", "localhost"));
         port = plugin.getConfig().getInt("database.port", 3306);
-        database = plugin.getConfig().getString("database.database", "plantation");
-        username = plugin.getConfig().getString("database.username", "root");
+        database = plugin.getConfig().getString("database.name",
+            plugin.getConfig().getString("database.database", "plantation"));
+        username = plugin.getConfig().getString("database.user",
+            plugin.getConfig().getString("database.username", "root"));
         password = plugin.getConfig().getString("database.password", "");
     }
 

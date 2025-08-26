@@ -5,8 +5,9 @@
 database:
   host: localhost
   port: 3306
-  database: plantation
-  username: root
+  # "name" and "user" keys are also accepted for compatibility
+  name: plantation
+  user: root
   password: ""
 
 # Plantation world and layout settings
