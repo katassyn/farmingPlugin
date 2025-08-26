@@ -177,13 +177,14 @@ public class PlantationListeners implements Listener {
             );
         }
 
-        // Process any pending harvests
-        plugin.getPlantationManager().processFarmHarvest(farmInstance);
-        
-        // Open GUI
-        PlantationGUI gui = new PlantationGUI(plugin, farmInstance, player);
-        player.openInventory(gui.getInventory());
-        
+        // Harvest instantly if ready, otherwise open the GUI
+        if (farmInstance.isReadyForHarvest()) {
+            plugin.getPlantationManager().processFarmHarvest(farmInstance);
+        } else {
+            PlantationGUI gui = new PlantationGUI(plugin, farmInstance, player);
+            player.openInventory(gui.getInventory());
+        }
+
         // Update cooldown
         lastInteraction.put(player.getUniqueId(), System.currentTimeMillis());
     }

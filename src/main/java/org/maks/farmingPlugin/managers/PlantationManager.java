@@ -525,7 +525,7 @@ public class PlantationManager {
         }
         savePlayerData(uid);
 
-        player.sendMessage(ChatColor.GREEN + "Odblokowano: " + type.getDisplayName() + " #" + instanceId);
+        player.sendMessage(ChatColor.GREEN + "Unlocked: " + type.getDisplayName() + " #" + instanceId);
         return true;
     }
 
