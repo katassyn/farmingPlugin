@@ -1,10 +1,8 @@
 package org.maks.farmingPlugin.managers;
 
 import org.bukkit.entity.Player;
-import org.bukkit.plugin.Plugin;
 import org.maks.farmingPlugin.FarmingPlugin;
 import org.maks.farmingPlugin.materials.MaterialType;
-
 import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.UUID;
