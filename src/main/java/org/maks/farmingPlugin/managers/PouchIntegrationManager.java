@@ -3,8 +3,7 @@ package org.maks.farmingPlugin.managers;
 import org.bukkit.entity.Player;
 import org.maks.farmingPlugin.FarmingPlugin;
 import org.maks.farmingPlugin.materials.MaterialType;
-import com.maks.ingredientpouchplugin.api.IngredientPouchAPI;
-
+import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Level;
@@ -16,7 +15,9 @@ import java.util.logging.Level;
  */
 public class PouchIntegrationManager {
     private final FarmingPlugin plugin;
-    private IngredientPouchAPI pouchAPI;
+    private Object pouchAPI;
+    private Method getItemQuantityMethod;
+    private Method updateItemQuantityMethod;
     private boolean enabled = false;
 
     public PouchIntegrationManager(FarmingPlugin plugin) {
@@ -29,9 +30,15 @@ public class PouchIntegrationManager {
      */
     private void initialize() {
         try {
-            if (plugin.getServer().getPluginManager().getPlugin("IngredientPouchPlugin") != null) {
-                pouchAPI = IngredientPouchAPI.getInstance();
-                if (pouchAPI != null) {
+            Plugin pouchPlugin = plugin.getServer().getPluginManager().getPlugin("IngredientPouchPlugin");
+            if (pouchPlugin != null) {
+                Method getAPIMethod = pouchPlugin.getClass().getMethod("getAPI");
+                Object apiInstance = getAPIMethod.invoke(pouchPlugin);
+                if (apiInstance != null) {
+                    pouchAPI = apiInstance;
+                    Class<?> apiClass = apiInstance.getClass();
+                    getItemQuantityMethod = apiClass.getMethod("getItemQuantity", String.class, String.class);
+                    updateItemQuantityMethod = apiClass.getMethod("updateItemQuantity", String.class, String.class, int.class);
                     enabled = true;
                     plugin.getLogger().info("✓ Successfully hooked into IngredientPouchPlugin!");
                 } else {
@@ -75,7 +82,8 @@ public class PouchIntegrationManager {
 
         try {
             String itemKey = getPouchItemKey(materialType, tier);
-            int currentAmount = pouchAPI.getItemQuantity(playerUuid.toString(), itemKey);
+            Object result = getItemQuantityMethod.invoke(pouchAPI, playerUuid.toString(), itemKey);
+            int currentAmount = result instanceof Integer ? (Integer) result : 0;
 
             plugin.debug("Checking pouch for " + itemKey + ": has " + currentAmount + ", needs " + amount);
 
@@ -96,7 +104,8 @@ public class PouchIntegrationManager {
 
         try {
             String itemKey = getPouchItemKey(materialType, tier);
-            boolean success = pouchAPI.updateItemQuantity(playerUuid.toString(), itemKey, amount);
+            Object result = updateItemQuantityMethod.invoke(pouchAPI, playerUuid.toString(), itemKey, amount);
+            boolean success = result instanceof Boolean && (Boolean) result;
 
             if (success) {
                 plugin.debug("Added " + amount + "x " + itemKey + " to " + playerUuid + "'s pouch");
@@ -123,13 +132,15 @@ public class PouchIntegrationManager {
             String itemKey = getPouchItemKey(materialType, tier);
 
             // Check current amount first
-            int currentAmount = pouchAPI.getItemQuantity(playerUuid.toString(), itemKey);
+            Object current = getItemQuantityMethod.invoke(pouchAPI, playerUuid.toString(), itemKey);
+            int currentAmount = current instanceof Integer ? (Integer) current : 0;
             if (currentAmount < amount) {
                 plugin.debug("Not enough " + itemKey + " in pouch: has " + currentAmount + ", needs " + amount);
                 return false;
             }
 
-            boolean success = pouchAPI.updateItemQuantity(playerUuid.toString(), itemKey, -amount);
+            Object result = updateItemQuantityMethod.invoke(pouchAPI, playerUuid.toString(), itemKey, -amount);
+            boolean success = result instanceof Boolean && (Boolean) result;
 
             if (success) {
                 plugin.debug("Removed " + amount + "x " + itemKey + " from " + playerUuid + "'s pouch");
@@ -180,7 +191,8 @@ public class PouchIntegrationManager {
 
                     // Check partial amount
                     String itemKey = getPouchItemKey(materialType, tier);
-                    int pouchAmount = pouchAPI.getItemQuantity(playerUuid.toString(), itemKey);
+                    Object current = getItemQuantityMethod.invoke(pouchAPI, playerUuid.toString(), itemKey);
+                    int pouchAmount = current instanceof Integer ? (Integer) current : 0;
                     if (pouchAmount > 0) {
                         totalFound += Math.min(pouchAmount, needed);
                         needed -= Math.min(pouchAmount, needed);
@@ -230,7 +242,8 @@ public class PouchIntegrationManager {
             if (required > 0 && enabled) {
                 for (int tier = 1; tier <= 3 && required > 0; tier++) {
                     String itemKey = getPouchItemKey(materialType, tier);
-                    int pouchAmount = pouchAPI.getItemQuantity(playerUuid.toString(), itemKey);
+                    Object current = getItemQuantityMethod.invoke(pouchAPI, playerUuid.toString(), itemKey);
+                    int pouchAmount = current instanceof Integer ? (Integer) current : 0;
 
                     if (pouchAmount > 0) {
                         int toRemove = Math.min(pouchAmount, required);
@@ -299,7 +312,12 @@ public class PouchIntegrationManager {
         int total = 0;
         for (int tier = 1; tier <= 3; tier++) {
             String itemKey = getPouchItemKey(materialType, tier);
-            total += pouchAPI.getItemQuantity(playerUuid.toString(), itemKey);
+            try {
+                Object current = getItemQuantityMethod.invoke(pouchAPI, playerUuid.toString(), itemKey);
+                total += current instanceof Integer ? (Integer) current : 0;
+            } catch (Exception ignored) {
+                // ignore and continue
+            }
         }
 
         return total;
