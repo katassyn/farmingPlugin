@@ -324,7 +324,7 @@ public class PlantationGUI implements InventoryHolder {
         
         // Update hologram when GUI is refreshed (storage might have changed)
         if (plugin.getHologramManager() != null) {
-            plugin.getHologramManager().updateHologram(farmInstance);
+            plugin.getHologramManager().updateHologram(farmInstance, true);
         }
     }
 

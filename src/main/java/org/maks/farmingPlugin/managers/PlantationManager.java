@@ -395,7 +395,8 @@ public class PlantationManager {
         checkLevelUp(farm);
 
         if (plugin.getHologramManager() != null) {
-            plugin.getHologramManager().updateHologram(farm);
+            // Force update to ensure hologram reflects new state immediately after harvest
+            plugin.getHologramManager().updateHologram(farm, true);
         }
 
         player.playSound(dropLoc, Sound.ITEM_BUNDLE_DROP_CONTENTS, 1.0f, 1.0f);
