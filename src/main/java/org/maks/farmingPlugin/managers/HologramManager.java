@@ -43,19 +43,27 @@ public class HologramManager {
      * Create or update hologram for a farm instance
      */
     public void updateHologram(FarmInstance farm) {
+        updateHologram(farm, false);
+    }
+
+    /**
+     * Create or update hologram for a farm instance
+     * @param force If true, bypasses the update cooldown
+     */
+    public void updateHologram(FarmInstance farm, boolean force) {
         if (!enabled || farm.getLocation() == null) return;
-        
+
         String hologramKey = getHologramKey(farm);
-        
+
         // Check update cooldown to prevent flickering
         Long lastUpdate = lastUpdateTimes.get(hologramKey);
-        if (lastUpdate != null && System.currentTimeMillis() - lastUpdate < UPDATE_COOLDOWN) {
+        if (!force && lastUpdate != null && System.currentTimeMillis() - lastUpdate < UPDATE_COOLDOWN) {
             return; // Skip update if too soon
         }
-        
+
         // Remove old hologram if exists
         removeHologram(hologramKey);
-        
+
         // Create new hologram lines
         List<String> lines = generateHologramLines(farm);
         Location baseLocation = holoLoc(farm.getLocation());
