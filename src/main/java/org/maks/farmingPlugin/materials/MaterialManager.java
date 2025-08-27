@@ -12,6 +12,7 @@ import org.maks.farmingPlugin.FarmingPlugin;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Arrays;
+import java.util.Locale;
 
 public class MaterialManager {
     private final FarmingPlugin plugin;
@@ -60,17 +61,31 @@ public class MaterialManager {
         }
         
         ItemMeta meta = item.getItemMeta();
-        return meta.getPersistentDataContainer().has(materialKey, PersistentDataType.STRING);
+
+        if (meta.getPersistentDataContainer().has(materialKey, PersistentDataType.STRING)) {
+            return true;
+        }
+
+        if (!meta.hasDisplayName()) {
+            return false;
+        }
+
+        String stripped = ChatColor.stripColor(meta.getDisplayName());
+        MaterialType type = parseMaterialType(stripped);
+        int tier = parseTier(stripped);
+
+        return type != null && tier > 0;
     }
 
     public MaterialType getMaterialType(ItemStack item) {
-        if (!isFarmingMaterial(item)) {
+        if (item == null || !item.hasItemMeta()) {
             return null;
         }
-        
+
         ItemMeta meta = item.getItemMeta();
+
         String materialId = meta.getPersistentDataContainer().get(materialKey, PersistentDataType.STRING);
-        
+
         if (materialId != null && materialId.startsWith("farmer_")) {
             String[] parts = materialId.substring(7).split("_");
             if (parts.length >= 2) {
@@ -78,17 +93,32 @@ public class MaterialManager {
                 return MaterialType.fromId(typeId);
             }
         }
-        
+
+        if (meta.hasDisplayName()) {
+            String stripped = ChatColor.stripColor(meta.getDisplayName());
+            return parseMaterialType(stripped);
+        }
+
         return null;
     }
 
     public int getMaterialTier(ItemStack item) {
-        if (!isFarmingMaterial(item)) {
+        if (item == null || !item.hasItemMeta()) {
             return 0;
         }
-        
+
         ItemMeta meta = item.getItemMeta();
-        return meta.getPersistentDataContainer().getOrDefault(tierKey, PersistentDataType.INTEGER, 0);
+
+        if (meta.getPersistentDataContainer().has(tierKey, PersistentDataType.INTEGER)) {
+            return meta.getPersistentDataContainer().getOrDefault(tierKey, PersistentDataType.INTEGER, 0);
+        }
+
+        if (meta.hasDisplayName()) {
+            String stripped = ChatColor.stripColor(meta.getDisplayName());
+            return parseTier(stripped);
+        }
+
+        return 0;
     }
 
     private String getTierRoman(int tier) {
@@ -107,5 +137,44 @@ public class MaterialManager {
             case 3 -> "&6";
             default -> "&9";
         };
+    }
+
+    private MaterialType parseMaterialType(String strippedName) {
+        if (strippedName == null) {
+            return null;
+        }
+
+        int endBracket = strippedName.indexOf(']');
+        if (strippedName.startsWith("[") && endBracket > 0) {
+            String namePart = strippedName.substring(endBracket + 1).trim();
+            for (MaterialType type : MaterialType.values()) {
+                if (type.getDisplayName().equalsIgnoreCase(namePart)) {
+                    return type;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private int parseTier(String strippedName) {
+        if (strippedName == null) {
+            return 0;
+        }
+
+        if (strippedName.startsWith("[")) {
+            int end = strippedName.indexOf(']');
+            if (end > 0) {
+                String roman = strippedName.substring(1, end).trim().toUpperCase(Locale.ROOT);
+                return switch (roman) {
+                    case "I" -> 1;
+                    case "II" -> 2;
+                    case "III" -> 3;
+                    default -> 0;
+                };
+            }
+        }
+
+        return 0;
     }
 }
