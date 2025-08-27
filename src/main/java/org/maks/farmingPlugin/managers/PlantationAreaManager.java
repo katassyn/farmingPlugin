@@ -300,6 +300,11 @@ public class PlantationAreaManager {
         return positions != null ? positions.size() : 0;
     }
 
+    public void clearAllAreas() {
+        areas.clear();
+        playerAnchors.clear();
+    }
+
     /** Regenerate player's plantation area with proper layout */
     public void regeneratePlayerArea(Player player) {
         if (world == null) {

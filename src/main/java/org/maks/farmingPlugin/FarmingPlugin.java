@@ -20,6 +20,7 @@ public final class FarmingPlugin extends JavaPlugin {
     private PlantationAreaManager plantationAreaManager;
     private OfflineGrowthManager offlineGrowthManager;
     private HologramManager hologramManager;
+    private PouchIntegrationManager pouchIntegrationManager;
     
     private static FarmingPlugin instance;
 
@@ -165,6 +166,11 @@ public final class FarmingPlugin extends JavaPlugin {
         } else {
             getLogger().info("Hologram system disabled in config");
         }
+        
+        // Pouch Integration Manager
+        getLogger().info("Initializing pouch integration...");
+        pouchIntegrationManager = new PouchIntegrationManager(this);
+        getLogger().info("✔ Pouch integration initialized!");
     }
 
     private void registerCommands() {
@@ -242,6 +248,10 @@ public final class FarmingPlugin extends JavaPlugin {
 
     public HologramManager getHologramManager() {
         return hologramManager;
+    }
+
+    public PouchIntegrationManager getPouchIntegrationManager() {
+        return pouchIntegrationManager;
     }
 
     public static FarmingPlugin getInstance() {

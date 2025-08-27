@@ -10,6 +10,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.maks.farmingPlugin.FarmingPlugin;
 import org.maks.farmingPlugin.farms.FarmInstance;
+import org.maks.farmingPlugin.farms.FarmType;
 import org.maks.farmingPlugin.farms.MaterialDrop;
 import org.maks.farmingPlugin.fruits.FruitType;
 import org.maks.farmingPlugin.materials.MaterialManager;
@@ -62,7 +63,8 @@ public class PlantationGUI implements InventoryHolder {
 
     private void addFarmDisplay() {
         // Show the actual farm block in the center top
-        ItemStack farmBlock = new ItemStack(farmInstance.getFarmType().getBlockType());
+        Material displayMaterial = getDisplayMaterial(farmInstance.getFarmType());
+        ItemStack farmBlock = new ItemStack(displayMaterial);
         ItemMeta farmMeta = farmBlock.getItemMeta();
         
         if (farmMeta != null) {
@@ -305,10 +307,25 @@ public class PlantationGUI implements InventoryHolder {
 
         return item;
     }
+    
+    private Material getDisplayMaterial(FarmType farmType) {
+        // Some materials don't work well as GUI items, so we use alternatives
+        return switch (farmType) {
+            case BERRY_ORCHARDS -> Material.SWEET_BERRIES; // Use berries instead of bush
+            case FUNGAL_CAVERNS -> Material.RED_MUSHROOM; // Use mushroom instead of block
+            case ANCIENT_MANGROVES -> Material.MANGROVE_LEAVES; // Use leaves instead of propagule
+            default -> farmType.getBlockType(); // Use original material for others
+        };
+    }
 
     public void refresh() {
         inventory.clear();
         setupGUI();
+        
+        // Update hologram when GUI is refreshed (storage might have changed)
+        if (plugin.getHologramManager() != null) {
+            plugin.getHologramManager().updateHologram(farmInstance);
+        }
     }
 
     @Override

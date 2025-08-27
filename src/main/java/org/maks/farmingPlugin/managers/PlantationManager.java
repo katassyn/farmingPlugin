@@ -190,9 +190,11 @@ public class PlantationManager {
                         
                         farms.add(instance);
                         
-                        // Create hologram if enabled
+                        // Create hologram if enabled - run on main thread
                         if (plugin.getHologramManager() != null) {
-                            plugin.getHologramManager().updateHologram(instance);
+                            Bukkit.getScheduler().runTask(plugin, () -> {
+                                plugin.getHologramManager().updateHologram(instance);
+                            });
                         }
                     }
                 }
@@ -328,7 +330,7 @@ public class PlantationManager {
         int totalFruit = 0;
 
         String farmKey = farm.getFarmType().getId() + "_" + farm.getInstanceId();
-        Map<String, Long> playerSpecialDrops = lastSpecialDropTimes.get(farm.getOwnerId());
+        Map<String, Long> playerSpecialDrops = lastSpecialDropTimes.computeIfAbsent(farm.getOwnerId(), k -> new HashMap<>());
         long lastSpecialDrop = playerSpecialDrops.getOrDefault(farmKey, 0L);
         long specialDropCooldown = 1000L * 60 * 30; // 30 minutes
         MaterialManager mm = plugin.getMaterialManager();
@@ -418,16 +420,28 @@ public class PlantationManager {
         Map<MaterialType, Integer> requirements = unlockRequirements.get(farmType);
         if (requirements == null) return true;
         
-        // Check material requirements
-        for (Map.Entry<MaterialType, Integer> req : requirements.entrySet()) {
-            MaterialType materialType = req.getKey();
-            int requiredAmount = req.getValue();
-            
-            // Check tier 1 materials by default
-            int playerAmount = database.getPlayerMaterialAmount(playerUuid, materialType.getId(), 1);
-            
-            if (playerAmount < requiredAmount) {
+        // Check material requirements (inventory + pouch)
+        if (plugin.getPouchIntegrationManager().isEnabled()) {
+            java.util.Map<MaterialType, Integer> materialMap = new java.util.HashMap<>();
+            for (Map.Entry<MaterialType, Integer> req : requirements.entrySet()) {
+                materialMap.put(req.getKey(), req.getValue());
+            }
+            Player player = plugin.getServer().getPlayer(playerUuid);
+            if (player == null || !plugin.getPouchIntegrationManager().hasUpgradeMaterials(player, materialMap)) {
                 return false;
+            }
+        } else {
+            // Fallback to inventory-only check
+            for (Map.Entry<MaterialType, Integer> req : requirements.entrySet()) {
+                MaterialType materialType = req.getKey();
+                int requiredAmount = req.getValue();
+                
+                // Check tier 1 materials by default
+                int playerAmount = database.getPlayerMaterialAmount(playerUuid, materialType.getId(), 1);
+                
+                if (playerAmount < requiredAmount) {
+                    return false;
+                }
             }
         }
         
@@ -453,22 +467,38 @@ public class PlantationManager {
             return false;
         }
         
-        // Deduct materials
+        // Consume materials (from inventory and/or pouch)
         Map<MaterialType, Integer> requirements = unlockRequirements.get(farmType);
         Map<String, Integer> usedMaterials = new HashMap<>();
         
         if (requirements != null) {
-            for (Map.Entry<MaterialType, Integer> req : requirements.entrySet()) {
-                MaterialType materialType = req.getKey();
-                int requiredAmount = req.getValue();
+            if (plugin.getPouchIntegrationManager().isEnabled() && player != null) {
+                // Use pouch integration if available
+                if (!plugin.getPouchIntegrationManager().consumeUpgradeMaterials(player, requirements)) {
+                    if (player != null) {
+                        player.sendMessage(ChatColor.RED + "Failed to consume materials for farm unlock!");
+                    }
+                    return false;
+                }
                 
-                // Deduct from database
-                database.updatePlayerMaterial(playerUuid, materialType.getId(), 1, -requiredAmount);
-                usedMaterials.put(materialType.getId() + "_tier_1", requiredAmount);
-                
-                // Remove from player inventory if online
-                if (player != null) {
-                    removeMaterialFromInventory(player, materialType, 1, requiredAmount);
+                // Record used materials for database
+                for (Map.Entry<MaterialType, Integer> req : requirements.entrySet()) {
+                    usedMaterials.put(req.getKey().getId() + "_tier_1", req.getValue());
+                }
+            } else {
+                // Fallback to inventory-only consumption
+                for (Map.Entry<MaterialType, Integer> req : requirements.entrySet()) {
+                    MaterialType materialType = req.getKey();
+                    int requiredAmount = req.getValue();
+                    
+                    // Deduct from database
+                    database.updatePlayerMaterial(playerUuid, materialType.getId(), 1, -requiredAmount);
+                    usedMaterials.put(materialType.getId() + "_tier_1", requiredAmount);
+                    
+                    // Remove from player inventory if online
+                    if (player != null) {
+                        removeMaterialFromInventory(player, materialType, 1, requiredAmount);
+                    }
                 }
             }
         }
@@ -572,6 +602,12 @@ public class PlantationManager {
         database.updatePlayerStats(playerUuid, "total_farms_created", 1);
 
         return instance;
+    }
+    
+    public void clearAllData() {
+        playerFarms.clear();
+        lastSpecialDropTimes.clear();
+        // farmDrops and unlockRequirements are config-based, so don't clear them
     }
 
     public long getHarvestIntervalMillis(FarmInstance farm) {

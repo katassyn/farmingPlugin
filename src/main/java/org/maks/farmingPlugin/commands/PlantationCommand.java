@@ -38,12 +38,18 @@ public class PlantationCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        if (!player.hasPermission("plantation.use") && !player.hasPermission("plantation.admin")) {
-            player.sendMessage(ChatColor.RED + "You need to visit the Farm NPC to use this!");
-            return true;
-        }
-
         if (args.length == 0) {
+            // Only check permissions and level for GUI opening
+            if (!player.hasPermission("plantation.use") && !player.hasPermission("plantation.admin")) {
+                player.sendMessage(ChatColor.RED + "You don't have permission to use this command!");
+                return true;
+            }
+
+            if (player.getLevel() < 85) {
+                player.sendMessage(ChatColor.RED + "You must be at least level 85!");
+                return true;
+            }
+            
             PlantationTeleportGUI gui = new PlantationTeleportGUI(plugin, player);
             player.openInventory(gui.getInventory());
             return true;
@@ -118,6 +124,13 @@ public class PlantationCommand implements CommandExecutor, TabCompleter {
                     player.sendMessage(ChatColor.RED + "You don't have permission to use this command!");
                 } else {
                     player.sendMessage(ChatColor.RED + "Usage: /plantation forceharvest <farmtype> <instance>");
+                }
+            }
+            case "hardreset" -> {
+                if (player.hasPermission("plantation.admin")) {
+                    hardReset(player);
+                } else {
+                    player.sendMessage(ChatColor.RED + "You don't have permission to use this command!");
                 }
             }
             case "top", "leaderboard" -> showLeaderboard(player);
@@ -617,6 +630,66 @@ public class PlantationCommand implements CommandExecutor, TabCompleter {
             player.sendMessage(ChatColor.RED + "/plantation setlevel <player> <farm> <instance> <level>" + ChatColor.GRAY + " - Set farm level");
             player.sendMessage(ChatColor.RED + "/plantation addexp <player> <farm> <instance> <exp>" + ChatColor.GRAY + " - Add experience");
             player.sendMessage(ChatColor.RED + "/plantation forceharvest <farm> <instance>" + ChatColor.GRAY + " - Force harvest");
+            player.sendMessage(ChatColor.RED + "/plantation hardreset" + ChatColor.GRAY + " - Clear ALL plugin databases");
+        }
+    }
+
+    private void hardReset(Player player) {
+        player.sendMessage(ChatColor.YELLOW + "⚠ WARNING: This will delete ALL farming plugin data and regenerate all plantations!");
+        performHardReset(player);
+    }
+    
+    private void performHardReset(Player player) {
+        try {
+            player.sendMessage(ChatColor.YELLOW + "Starting hard reset...");
+            
+            // Clear all in-memory data first
+            plugin.getPlantationManager().clearAllData();
+            
+            // Clear all database tables
+            String[] tables = {
+                "farming_player_plantations",
+                "farming_plantation_storage", 
+                "farming_farm_anchors",
+                "farming_player_materials",
+                "farming_player_stats",
+                "farming_farm_unlocks"
+            };
+            
+            for (String table : tables) {
+                try {
+                    String sql = "DELETE FROM " + table;
+                    var stmt = plugin.getDatabaseManager().prepareStatement(sql);
+                    int deleted = stmt.executeUpdate();
+                    stmt.close();
+                    player.sendMessage(ChatColor.GRAY + "Cleared " + table + " (" + deleted + " records)");
+                } catch (Exception e) {
+                    player.sendMessage(ChatColor.RED + "Failed to clear " + table + ": " + e.getMessage());
+                }
+            }
+            
+            // Clear holograms if enabled
+            if (plugin.getHologramManager() != null) {
+                plugin.getHologramManager().cleanup();
+                player.sendMessage(ChatColor.GRAY + "Cleared all holograms");
+            }
+            
+            // Regenerate all plantation areas
+            player.sendMessage(ChatColor.YELLOW + "Regenerating plantation areas...");
+            for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
+                plugin.getPlantationAreaManager().regeneratePlayerArea(onlinePlayer);
+                player.sendMessage(ChatColor.GRAY + "Regenerated plantation for " + onlinePlayer.getName());
+            }
+            
+            // Also clear any offline player areas that might exist
+            plugin.getPlantationAreaManager().clearAllAreas();
+            
+            player.sendMessage(ChatColor.GREEN + "✔ Hard reset completed successfully!");
+            player.sendMessage(ChatColor.YELLOW + "All farming plugin data has been cleared and plantations regenerated.");
+            
+        } catch (Exception e) {
+            player.sendMessage(ChatColor.RED + "Error during hard reset: " + e.getMessage());
+            plugin.getLogger().severe("Hard reset error: " + e.getMessage());
         }
     }
 
@@ -633,7 +706,7 @@ public class PlantationCommand implements CommandExecutor, TabCompleter {
             
             if (player.hasPermission("plantation.admin")) {
                 subCommands = new ArrayList<>(subCommands);
-                subCommands.addAll(Arrays.asList("reload", "reset", "debug", "give", "setlevel", "addexp", "forceharvest"));
+                subCommands.addAll(Arrays.asList("reload", "reset", "debug", "give", "setlevel", "addexp", "forceharvest", "hardreset"));
             }
             
             for (String subCommand : subCommands) {

@@ -240,14 +240,14 @@ public class QuickSellGUI implements InventoryHolder {
     }
 
     public void sellAll() {
-        if (totalValue <= 0) {
+        // Always recalculate to get the most up-to-date state
+        calculateTotal();
+        
+        if (totalValue <= 0 || fruitsToSell.isEmpty()) {
             player.sendMessage(ChatColor.RED + "No fruits to sell!");
             player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
             return;
         }
-        
-        // Calculate final total
-        calculateTotal();
         
         // Give money to player
         plugin.getEconomyManager().depositMoney(player, totalValue);

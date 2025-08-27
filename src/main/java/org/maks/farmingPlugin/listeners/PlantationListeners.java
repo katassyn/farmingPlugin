@@ -100,9 +100,13 @@ public class PlantationListeners implements Listener {
 
         if (block == null) return;
 
-        // Allow Adventure mode players to interact with farm blocks
+        // Allow Adventure mode players to interact with farm blocks and signs only
         if (player.getGameMode() == GameMode.ADVENTURE) {
-            event.setUseInteractedBlock(Event.Result.ALLOW);
+            FarmType farmType = FarmType.fromBlockType(block.getType());
+            boolean isSign = block.getState() instanceof Sign;
+            if (farmType != null || isSign) {
+                event.setUseInteractedBlock(Event.Result.ALLOW);
+            }
             event.setUseItemInHand(Event.Result.DENY);
         }
         
@@ -111,9 +115,7 @@ public class PlantationListeners implements Listener {
             return;
         }
         
-        if (!player.hasPermission("plantation.use")) {
-            return;
-        }
+        // Remove permission check for plantation interaction - only level check needed
 
         FarmType farmType = FarmType.fromBlockType(block.getType());
         if (farmType == null) return;
@@ -228,8 +230,14 @@ public class PlantationListeners implements Listener {
             plugin.getPlantationAreaManager().placeFarmBlock(b.getLocation(), type);
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 FarmInstance fi = plugin.getPlantationManager().getFarmInstance(player.getUniqueId(), type, instanceId);
-                if (fi != null && plugin.getHologramManager() != null) {
-                    plugin.getHologramManager().updateHologram(fi);
+                if (fi != null) {
+                    // Reset harvest timer to prevent instant harvest after unlock
+                    fi.setLastHarvest(System.currentTimeMillis());
+                    plugin.getPlantationManager().savePlayerData(player.getUniqueId());
+                    
+                    if (plugin.getHologramManager() != null) {
+                        plugin.getHologramManager().updateHologram(fi);
+                    }
                 }
             }, 2L);
             player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
@@ -360,7 +368,7 @@ public class PlantationListeners implements Listener {
                 return;
             }
 
-            if (event.isShiftClick()) {
+            if (event.isShiftClick() && clicked != null && gui.isFruit(clicked)) {
                 plugin.getServer().getScheduler().runTaskLater(plugin, gui::updateTotalDisplay, 1L);
             }
             return; // Don't cancel normal inventory actions
@@ -375,7 +383,10 @@ public class PlantationListeners implements Listener {
                 return;
             }
 
-            plugin.getServer().getScheduler().runTaskLater(plugin, gui::updateTotalDisplay, 1L);
+            // Schedule update on next tick to ensure inventory changes are reflected
+            plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                gui.updateTotalDisplay();
+            }, 2L);
             return;
         }
 

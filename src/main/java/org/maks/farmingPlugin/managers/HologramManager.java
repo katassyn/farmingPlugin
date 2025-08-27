@@ -26,7 +26,7 @@ public class HologramManager {
     private final boolean enabled;
     private final double yOffset;
     private BukkitRunnable updateTask;
-    private static final long UPDATE_COOLDOWN = 5000; // 5 seconds minimum between updates
+    private static final long UPDATE_COOLDOWN = 1000; // 1 second minimum between updates
 
     public HologramManager(FarmingPlugin plugin) {
         this.plugin = plugin;
@@ -176,35 +176,46 @@ public class HologramManager {
      */
     public void updateAllHolograms() {
         for (Player player : Bukkit.getOnlinePlayers()) {
-            List<FarmInstance> farms = plugin.getPlantationManager().getPlayerFarms(player.getUniqueId());
-            
-            for (FarmInstance farm : farms) {
-                if (farm.getLocation() != null) {
-                    String key = getHologramKey(farm);
-                    
-                    // Only update if hologram doesn't exist or needs updating
-                    boolean needsUpdate = false;
-                    
-                    if (!holograms.containsKey(key)) {
-                        needsUpdate = true; // Hologram doesn't exist
-                    } else {
-                        // Check if content has changed significantly
-                        Long lastUpdate = lastUpdateTimes.get(key);
-                        if (lastUpdate == null || System.currentTimeMillis() - lastUpdate > 30000) {
-                            // Update every 30 seconds at most
-                            needsUpdate = true;
-                        } else if (farm.isReadyForHarvest()) {
-                            // Always update when ready for harvest
-                            needsUpdate = true;
+            // Check if player is in their plantation area
+            if (isPlayerInOwnPlantation(player)) {
+                List<FarmInstance> farms = plugin.getPlantationManager().getPlayerFarms(player.getUniqueId());
+                
+                for (FarmInstance farm : farms) {
+                    if (farm.getLocation() != null) {
+                        String key = getHologramKey(farm);
+                        
+                        // Only update if hologram doesn't exist or needs updating
+                        boolean needsUpdate = false;
+                        
+                        if (!holograms.containsKey(key)) {
+                            needsUpdate = true; // Hologram doesn't exist
+                        } else {
+                            // Check if content has changed significantly
+                            Long lastUpdate = lastUpdateTimes.get(key);
+                            if (lastUpdate == null || System.currentTimeMillis() - lastUpdate > 30000) {
+                                // Update every 30 seconds at most
+                                needsUpdate = true;
+                            } else if (farm.isReadyForHarvest()) {
+                                // Always update when ready for harvest
+                                needsUpdate = true;
+                            }
+                        }
+                        
+                        if (needsUpdate) {
+                            updateHologram(farm);
                         }
                     }
-                    
-                    if (needsUpdate) {
-                        updateHologram(farm);
-                    }
                 }
+            } else {
+                // Remove holograms for this player if they're not in their plantation
+                removePlayerHolograms(player.getUniqueId());
             }
         }
+    }
+    
+    private boolean isPlayerInOwnPlantation(Player player) {
+        return plugin.getPlantationAreaManager().isLocationInPlantation(
+            player.getUniqueId(), player.getLocation());
     }
 
     /**
@@ -218,8 +229,8 @@ public class HologramManager {
             }
         };
         
-        // Update every 30 seconds instead of every 5
-        updateTask.runTaskTimer(plugin, 100L, 600L);
+        // Update every minute (1200 ticks = 60 seconds)
+        updateTask.runTaskTimer(plugin, 100L, 1200L);
     }
 
     /**

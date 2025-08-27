@@ -285,13 +285,24 @@ public class FarmUpgradeGUI implements InventoryHolder {
         plugin.getEconomyManager().withdrawMoney(player, cost);
 
         Map<MaterialType, Integer> materials = farmInstance.getUpgradeMaterials(upgradeType, currentLevel + 1);
-        for (Map.Entry<MaterialType, Integer> entry : materials.entrySet()) {
-            plugin.getDatabaseManager().updatePlayerMaterial(
-                player.getUniqueId(), 
-                entry.getKey().getId(), 
-                1, 
-                -entry.getValue()
-            );
+        
+        // Consume materials (from inventory and/or pouch)
+        if (plugin.getPouchIntegrationManager().isEnabled()) {
+            if (!plugin.getPouchIntegrationManager().consumeUpgradeMaterials(player, materials)) {
+                player.sendMessage(ChatColor.RED + "Failed to consume materials for upgrade!");
+                player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+                return;
+            }
+        } else {
+            // Fallback to inventory-only consumption
+            for (Map.Entry<MaterialType, Integer> entry : materials.entrySet()) {
+                plugin.getDatabaseManager().updatePlayerMaterial(
+                    player.getUniqueId(), 
+                    entry.getKey().getId(), 
+                    1, 
+                    -entry.getValue()
+                );
+            }
         }
 
         // Apply upgrade
@@ -359,6 +370,11 @@ public class FarmUpgradeGUI implements InventoryHolder {
             plugin.getHologramManager().showLevelUpAnimation(farmInstance.getLocation(), farmInstance.getLevel());
         }
         
+        // Update hologram
+        if (plugin.getHologramManager() != null) {
+            plugin.getHologramManager().updateHologram(farmInstance);
+        }
+        
         // Save and refresh
         plugin.getPlantationManager().savePlayerData(player.getUniqueId());
         setupGUI();
@@ -380,12 +396,18 @@ public class FarmUpgradeGUI implements InventoryHolder {
 
         Map<MaterialType, Integer> materials = farmInstance.getUpgradeMaterials(upgradeType, nextLevel);
         
-        for (Map.Entry<MaterialType, Integer> entry : materials.entrySet()) {
-            int playerAmount = plugin.getDatabaseManager()
-                .getPlayerMaterialAmount(player.getUniqueId(), entry.getKey().getId(), 1);
-            
-            if (playerAmount < entry.getValue()) {
-                return false;
+        // Check if pouch integration is available
+        if (plugin.getPouchIntegrationManager().isEnabled()) {
+            return plugin.getPouchIntegrationManager().hasUpgradeMaterials(player, materials);
+        } else {
+            // Fallback to inventory-only check
+            for (Map.Entry<MaterialType, Integer> entry : materials.entrySet()) {
+                int playerAmount = plugin.getDatabaseManager()
+                    .getPlayerMaterialAmount(player.getUniqueId(), entry.getKey().getId(), 1);
+                
+                if (playerAmount < entry.getValue()) {
+                    return false;
+                }
             }
         }
         
