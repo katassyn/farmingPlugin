@@ -285,20 +285,27 @@ public class FarmUpgradeGUI implements InventoryHolder {
         plugin.getEconomyManager().withdrawMoney(player, cost);
 
         Map<MaterialType, Integer> materials = farmInstance.getUpgradeMaterials(upgradeType, currentLevel + 1);
-        
+
         // Consume materials (from inventory and/or pouch)
         if (plugin.getPouchIntegrationManager().isEnabled()) {
-            if (!plugin.getPouchIntegrationManager().consumeUpgradeMaterials(player, materials)) {
-                player.sendMessage(ChatColor.RED + "Failed to consume materials for upgrade!");
+            try {
+                if (!plugin.getPouchIntegrationManager().consumeUpgradeMaterials(player, materials)) {
+                    player.sendMessage(ChatColor.RED + "Failed to consume materials for upgrade!");
+                    player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+                    return;
+                }
+            } catch (Exception e) {
+                player.sendMessage(ChatColor.RED + "Error accessing ingredient pouch!");
                 player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+                plugin.getLogger().warning("Pouch integration error during upgrade: " + e.getMessage());
                 return;
             }
         } else {
             // Fallback to inventory-only consumption
             for (Map.Entry<MaterialType, Integer> entry : materials.entrySet()) {
                 plugin.getDatabaseManager().updatePlayerMaterial(
-                    player.getUniqueId(), 
-                    entry.getKey().getId(), 
+                    player.getUniqueId(),
+                    entry.getKey().getId(),
                     1, 
                     -entry.getValue()
                 );
@@ -395,10 +402,15 @@ public class FarmUpgradeGUI implements InventoryHolder {
         };
 
         Map<MaterialType, Integer> materials = farmInstance.getUpgradeMaterials(upgradeType, nextLevel);
-        
+
         // Check if pouch integration is available
         if (plugin.getPouchIntegrationManager().isEnabled()) {
-            return plugin.getPouchIntegrationManager().hasUpgradeMaterials(player, materials);
+            try {
+                return plugin.getPouchIntegrationManager().hasUpgradeMaterials(player, materials);
+            } catch (Exception e) {
+                plugin.getLogger().warning("Pouch integration error while checking materials: " + e.getMessage());
+                return false;
+            }
         } else {
             // Fallback to inventory-only check
             for (Map.Entry<MaterialType, Integer> entry : materials.entrySet()) {
