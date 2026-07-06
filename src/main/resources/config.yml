@@ -7,6 +7,26 @@ database:
   name: plantation
   user: root
   password: ""
+  
+  # HikariCP connection pool settings
+  hikari:
+    # Maximum number of connections in the pool
+    maximum_pool_size: 5
+    
+    # Minimum number of idle connections to maintain
+    minimum_idle: 2
+    
+    # Connection timeout in milliseconds (10 seconds)
+    connection_timeout: 10000
+    
+    # Idle timeout in milliseconds (5 minutes)
+    idle_timeout: 300000
+    
+    # Maximum lifetime of a connection in milliseconds (15 minutes)
+    max_lifetime: 900000
+    
+    # Connection leak detection threshold in milliseconds (30 seconds)
+    leak_detection_threshold: 30000
 
 # Economy settings
 # Economy settings
@@ -45,8 +65,85 @@ plantations:
     block_farm_blocks: true
   # Hologram settings
   holograms:
+    # Enable or disable the hologram system
     enabled: true
-    update_interval: 30 # seconds  # Drop settings
+    
+    # Y-offset for holograms above farm blocks
+    # Recommended values: 1.0 - 2.5 (adjust based on your preference)
+    y_offset: 1.5
+    
+    # Update interval in ticks (20 ticks = 1 second)
+    # Lower values = more frequent updates but higher server load
+    update_interval: 100  # 5 seconds
+    
+    # Cleanup interval in ticks for removing orphaned armor stands
+    cleanup_interval: 600  # 30 seconds
+    
+    # Maximum distance from farm to show hologram (in blocks)
+    view_distance: 32
+    
+    # Show progress bar for growing farms
+    show_progress_bar: true
+    
+    # Show efficiency and quality bonuses
+    show_upgrades: true
+    
+    # Blink effect for ready farms
+    ready_blink: true
+    
+    # Colors (use Minecraft color codes)
+    colors:
+      title: "&e&l"          # Yellow bold for farm name
+      ready: "&a&l"          # Green bold for ready status
+      timer: "&6"            # Gold for timer
+      storage_low: "&a"      # Green when storage is low
+      storage_medium: "&e"   # Yellow when storage is filling
+      storage_full: "&c"     # Red when storage is full
+      progress_filled: "&a"  # Green for filled progress
+      progress_empty: "&7"   # Gray for empty progress
+      
+    # Line spacing (distance between text lines)
+    line_spacing: 0.23
+    
+    # Animation settings
+    animations:
+      # Floating text animation for harvests
+      harvest_text:
+        enabled: true
+        duration_ms: 2500
+        rise_speed: 0.03
+        
+      # Level up animation
+      level_up:
+        enabled: true
+        duration_ms: 3500
+        particle_count: 50
+    
+    # Performance settings
+    performance:
+      # Remove holograms when player is far away
+      remove_when_far: true
+      
+      # Distance to remove holograms (blocks)
+      far_distance: 50
+      
+      # Cache armor stands for better performance
+      use_cache: true
+      
+      # Batch updates to reduce lag
+      batch_updates: true
+      
+    # Debug settings
+    debug:
+      # Show debug messages in console
+      show_messages: false
+      
+      # Show hologram count in debug
+      show_count: true
+      
+      # Log hologram creation/removal
+      log_lifecycle: false
+  # Drop settings
   drop:
     radius: 0.6
 
@@ -86,8 +183,16 @@ auto_save:
 metrics:
   enabled: true
 
-# Debug mode
+# Debug mode - shows detailed information about material checking
 debug: false
+
+# Pouch integration settings
+pouch_integration:
+  enabled: true
+  # If true, will check both inventory and pouch for materials
+  check_both: true
+  # If true, will prefer taking materials from inventory before pouch
+  prefer_inventory: true
 
 # --- PLANTATION LAYOUT & WORLD ---
 plantation:
@@ -96,8 +201,6 @@ plantation:
     x: 1008
     y: 64
     z: 998
-  holograms:
-    y_offset: 2.0
   rebuild_on_join: true
 
 # --- TEST MODE ---
@@ -109,4 +212,3 @@ test_mode:
 blocks:
   path: DIRT_PATH
   ground: GRASS_BLOCK
-

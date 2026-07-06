@@ -14,6 +14,10 @@ import org.bukkit.inventory.ItemFlag;
 import org.maks.farmingPlugin.FarmingPlugin;
 import org.maks.farmingPlugin.fruits.FruitType;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -131,21 +135,19 @@ public class QuickSellGUI implements InventoryHolder {
         statsLore.add("");
         
         // Get player's total earnings from database
-        try {
-            String sql = "SELECT total_money_earned FROM farming_player_stats WHERE uuid = ?";
-            var stmt = plugin.getDatabaseManager().prepareStatement(sql);
+        String sql = "SELECT total_money_earned FROM farming_player_stats WHERE uuid = ?";
+        try (Connection conn = plugin.getDatabaseManager().getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, player.getUniqueId().toString());
-            var rs = stmt.executeQuery();
+            try (ResultSet rs = stmt.executeQuery()) {
             
-            if (rs.next()) {
-                double earned = rs.getDouble("total_money_earned");
-                statsLore.add(ChatColor.GREEN + "Total Earned: " + ChatColor.GOLD + 
-                            plugin.getEconomyManager().formatMoney(earned));
+                if (rs.next()) {
+                    double earned = rs.getDouble("total_money_earned");
+                    statsLore.add(ChatColor.GREEN + "Total Earned: " + ChatColor.GOLD + 
+                                plugin.getEconomyManager().formatMoney(earned));
+                }
             }
-            
-            rs.close();
-            stmt.close();
-        } catch (Exception e) {
+        } catch (SQLException e) {
             statsLore.add(ChatColor.RED + "Error loading stats");
         }
         
@@ -263,11 +265,33 @@ public class QuickSellGUI implements InventoryHolder {
         }
         
         // Effects
-        player.sendMessage(ChatColor.GREEN + "✦ Sold fruits for " + 
-                         ChatColor.GOLD + plugin.getEconomyManager().formatMoney(totalValue) + 
+        player.sendMessage(ChatColor.GREEN + "✦ Sold fruits for " +
+                         ChatColor.GOLD + plugin.getEconomyManager().formatMoney(totalValue) +
                          ChatColor.GREEN + "!");
         player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 2.0f);
-        
+
+        // Fire FruitSellEvent for QuestSystem integration
+        // Store totalValue before resetting it
+        long soldValue = (long) totalValue;
+        try {
+            Class<?> listenerClass = Class.forName("org.maks.questsystem.listeners.FarmingListener");
+            Class<?> eventClass = null;
+            for (Class<?> innerClass : listenerClass.getDeclaredClasses()) {
+                if (innerClass.getSimpleName().equals("FruitSellEvent")) {
+                    eventClass = innerClass;
+                    break;
+                }
+            }
+            if (eventClass != null) {
+                // Pass actual money earned from sale
+                Object event = eventClass.getConstructor(org.bukkit.entity.Player.class, long.class)
+                        .newInstance(player, soldValue);
+                org.bukkit.Bukkit.getPluginManager().callEvent((org.bukkit.event.Event) event);
+            }
+        } catch (Exception ignored) {
+            // QuestSystem might not be loaded
+        }
+
         // Particles
         player.getWorld().spawnParticle(
             org.bukkit.Particle.VILLAGER_HAPPY,

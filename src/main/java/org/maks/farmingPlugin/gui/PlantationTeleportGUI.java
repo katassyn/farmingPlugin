@@ -139,65 +139,24 @@ public class PlantationTeleportGUI implements InventoryHolder {
     }
 
     private void addFarmInfo() {
-        // Farm Types Overview
-        ItemStack farmInfo = createItem(Material.WHEAT,
-                ChatColor.YELLOW + "🌾 Farm Types",
+        // Farming Shop
+        ItemStack farmInfo = createItem(Material.EMERALD,
+                ChatColor.GREEN + "💎 Farming Shop",
                 null);
         ItemMeta meta = farmInfo.getItemMeta();
 
         List<String> lore = new ArrayList<>();
-        lore.add(ChatColor.GRAY + "Available farm types:");
+        lore.add(ChatColor.GRAY + "Access the farming shop!");
+        lore.add(ChatColor.GRAY + "Buy seeds, tools, and more!");
         lore.add("");
-
-        for (FarmType type : FarmType.values()) {
-            boolean unlocked = type == FarmType.BERRY_ORCHARDS ||
-                             plugin.getDatabaseManager().isFarmUnlocked(player.getUniqueId(), type.getId());
-
-            String status = unlocked ? ChatColor.GREEN + "✔" : ChatColor.RED + "✘";
-            String name = unlocked ? ChatColor.GREEN + type.getDisplayName() :
-                         ChatColor.GRAY + type.getDisplayName();
-
-            lore.add(status + " " + name);
-        }
+        lore.add(ChatColor.GREEN + "Click to open shop!");
 
         meta.setLore(lore);
         farmInfo.setItemMeta(meta);
 
         inventory.setItem(20, farmInfo);
 
-        // Quick Stats
-        ItemStack quickStats = createItem(Material.EMERALD,
-                ChatColor.AQUA + "📊 Quick Stats",
-                null);
-        ItemMeta statsMeta = quickStats.getItemMeta();
-
-        List<String> statsLore = new ArrayList<>();
-        try {
-            String sql = "SELECT total_harvests, total_materials_collected FROM farming_player_stats WHERE uuid = ?";
-            var stmt = plugin.getDatabaseManager().prepareStatement(sql);
-            stmt.setString(1, player.getUniqueId().toString());
-            var rs = stmt.executeQuery();
-
-            if (rs.next()) {
-                statsLore.add(ChatColor.GRAY + "Total Harvests: " + ChatColor.GREEN +
-                            String.format("%,d", rs.getLong("total_harvests")));
-                statsLore.add(ChatColor.GRAY + "Materials: " + ChatColor.AQUA +
-                            String.format("%,d", rs.getLong("total_materials_collected")));
-            } else {
-                statsLore.add(ChatColor.GRAY + "No data yet!");
-                statsLore.add(ChatColor.GRAY + "Start farming to earn!");
-            }
-
-            rs.close();
-            stmt.close();
-        } catch (Exception e) {
-            statsLore.add(ChatColor.RED + "Error loading stats");
-        }
-
-        statsMeta.setLore(statsLore);
-        quickStats.setItemMeta(statsMeta);
-
-        inventory.setItem(24, quickStats);
+        // NAPRAWKA: Usuń Quick Stats - nie potrzebne
     }
 
     private void addControlButtons() {
@@ -220,23 +179,7 @@ public class PlantationTeleportGUI implements InventoryHolder {
 
         inventory.setItem(30, infoButton);
 
-        // Commands button
-        ItemStack commandsButton = createItem(Material.COMMAND_BLOCK,
-                ChatColor.AQUA + "📋 Commands",
-                null);
-        ItemMeta cmdMeta = commandsButton.getItemMeta();
-
-        List<String> cmdLore = new ArrayList<>();
-        cmdLore.add(ChatColor.GREEN + "/plantation info" + ChatColor.GRAY + " - View farms");
-        cmdLore.add(ChatColor.GREEN + "/plantation stats" + ChatColor.GRAY + " - Statistics");
-        cmdLore.add(ChatColor.GREEN + "/plantation settings" + ChatColor.GRAY + " - Settings");
-        cmdLore.add(ChatColor.GREEN + "/plantation quicksell" + ChatColor.GRAY + " - Sell fruits");
-        cmdLore.add(ChatColor.GREEN + "/plantation help" + ChatColor.GRAY + " - Get help");
-
-        cmdMeta.setLore(cmdLore);
-        commandsButton.setItemMeta(cmdMeta);
-
-        inventory.setItem(32, commandsButton);
+        // NAPRAWKA: Usuń Commands button - nie potrzebne
 
         // Close button
         ItemStack closeButton = createItem(Material.BARRIER,

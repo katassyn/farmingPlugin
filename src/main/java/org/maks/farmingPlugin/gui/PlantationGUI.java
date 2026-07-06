@@ -92,17 +92,31 @@ public class PlantationGUI implements InventoryHolder {
 
     private void addFarmInfo() {
         List<String> lore = new ArrayList<>();
-        
-        // Harvest status
-        if (farmInstance.isReadyForHarvest()) {
-            lore.add(ChatColor.GREEN + "✔ Ready for harvest!");
+
+        // NAPRAWIONE: Aktualizuj storage przed wyświetleniem
+        farmInstance.updateStorageItems();
+        int storedItems = farmInstance.getCurrentStoredItems();
+        int maxStorage = farmInstance.getMaxStorage();
+
+        // Status zbioru
+        if (storedItems > 0) {
+            lore.add(ChatColor.GREEN + "✔ Ready to harvest!");
+            lore.add(ChatColor.YELLOW + "Items in storage: " + storedItems);
             lore.add(ChatColor.GRAY + "Right-click the farm to collect!");
+        } else if (storedItems >= maxStorage) {
+            lore.add(ChatColor.RED + "⚠ Storage FULL!");
+            lore.add(ChatColor.RED + "Production stopped!");
+            lore.add(ChatColor.YELLOW + "Harvest to resume production!");
         } else {
             long timeLeft = farmInstance.getTimeUntilNextHarvest();
-            String timeString = formatTime(timeLeft);
-            lore.add(ChatColor.YELLOW + "⏰ Next harvest in: " + timeString);
-            
-            // Progress bar
+            if (timeLeft > 0) {
+                String timeString = formatTime(timeLeft);
+                lore.add(ChatColor.YELLOW + "⏰ Next production in: " + timeString);
+            } else {
+                lore.add(ChatColor.YELLOW + "⏰ Production in progress...");
+            }
+
+            // Progress bar dla następnej produkcji
             double progress = farmInstance.getHarvestProgress();
             int filledBars = (int) (progress / 10);
             StringBuilder progressBar = new StringBuilder(ChatColor.GREEN + "[");
@@ -117,15 +131,35 @@ public class PlantationGUI implements InventoryHolder {
             lore.add(progressBar.toString());
         }
 
-        long stored = Math.min(farmInstance.getMaxStorage(),
-                (System.currentTimeMillis() - farmInstance.getLastHarvest()) / farmInstance.getAdjustedGrowthTime());
-        lore.add(ChatColor.GRAY + "Storage: " + ChatColor.WHITE + stored + "/" + farmInstance.getMaxStorage());
+        // Storage info z kolorami
+        ChatColor storageColor = ChatColor.WHITE;
+        double storagePercent = (double) storedItems / maxStorage * 100;
+        if (storagePercent >= 90) {
+            storageColor = ChatColor.RED;
+        } else if (storagePercent >= 75) {
+            storageColor = ChatColor.YELLOW;
+        } else if (storagePercent >= 50) {
+            storageColor = ChatColor.GOLD;
+        } else {
+            storageColor = ChatColor.GREEN;
+        }
+
+        lore.add(ChatColor.GRAY + "Storage: " + storageColor + storedItems + "/" + maxStorage +
+                " (" + String.format("%.0f%%", storagePercent) + ")");
 
         lore.add("");
         lore.add(ChatColor.GRAY + "Total Harvests: " + ChatColor.WHITE + farmInstance.getTotalHarvests());
-        lore.add(ChatColor.GRAY + "Experience: " + ChatColor.AQUA + farmInstance.getExp() + 
+        lore.add(ChatColor.GRAY + "Experience: " + ChatColor.AQUA + farmInstance.getExp() +
                 " / " + (farmInstance.getLevel() * 100 + (farmInstance.getLevel() - 1) * 50));
         lore.add(ChatColor.GRAY + "Efficiency: " + ChatColor.GREEN + farmInstance.getEfficiency() + "x");
+
+        // Pokaż czas do pełnego storage
+        if (storedItems < maxStorage) {
+            long timeToFull = farmInstance.getTimeUntilStorageFull();
+            if (timeToFull < Long.MAX_VALUE) {
+                lore.add(ChatColor.GRAY + "Storage full in: " + ChatColor.YELLOW + formatTime(timeToFull));
+            }
+        }
 
         ItemStack infoItem = createItem(Material.CLOCK,
                 ChatColor.GOLD + "Farm Status", lore);
@@ -146,7 +180,10 @@ public class PlantationGUI implements InventoryHolder {
         
         List<MaterialDrop> drops = plugin.getPlantationManager().getFarmDrops(farmInstance.getFarmType());
         for (MaterialDrop drop : drops) {
-            double chance = drop.getRate() * (1.0 + (farmInstance.getLevel() - 1) * 0.2);
+            // NAPRAWKA: Uwzględnij quality modifier w kalkulacji
+            double levelMultiplier = 1.0 + (farmInstance.getLevel() - 1) * 0.2;
+            double qualityMultiplier = farmInstance.getQualityModifier();
+            double chance = drop.getRate() * levelMultiplier * qualityMultiplier;
             lore.add(ChatColor.GRAY + "• " + drop.getMaterialType().getDisplayName() + 
                     " T" + drop.getTier() + ChatColor.DARK_GRAY + " (" + 
                     String.format("%.1f%%", chance) + ")");
@@ -216,7 +253,8 @@ public class PlantationGUI implements InventoryHolder {
         
         player.sendMessage(ChatColor.GOLD + "=== Drop Rates for " + farmInstance.getFarmType().getDisplayName() + " ===");
         player.sendMessage(ChatColor.GRAY + "Level " + farmInstance.getLevel() + 
-                         " | Efficiency: " + farmInstance.getEfficiency() + "x");
+                         " | Efficiency: " + farmInstance.getEfficiency() + "x" +
+                         " | Quality: " + String.format("%.0f%%", (farmInstance.getQualityModifier() - 1) * 100));
         player.sendMessage("");
         
         // Show fruit drops (common)
@@ -236,12 +274,18 @@ public class PlantationGUI implements InventoryHolder {
         
         for (MaterialDrop drop : drops) {
             String tierRoman = getTierRoman(drop.getTier());
-            double actualRate = drop.getRate() * (1.0 + (farmInstance.getLevel() - 1) * 0.2);
+            
+            // NAPRAWKA: Uwzględnij quality modifier w kalkulacji
+            double levelMultiplier = 1.0 + (farmInstance.getLevel() - 1) * 0.2;
+            double qualityMultiplier = farmInstance.getQualityModifier(); // To jest quality upgrade bonus
+            double actualRate = drop.getRate() * levelMultiplier * qualityMultiplier;
             
             player.sendMessage(ChatColor.GRAY + "• " + ChatColor.WHITE + 
                              drop.getMaterialType().getDisplayName() + " " + tierRoman + 
                              ChatColor.GRAY + ": " + ChatColor.YELLOW + String.format("%.1f%%", actualRate) + 
-                             ChatColor.DARK_GRAY + " (base: " + drop.getRate() + "%)");
+                             ChatColor.DARK_GRAY + " (base: " + String.format("%.1f%%", drop.getRate()) + 
+                             ", level: +" + String.format("%.0f%%", (levelMultiplier - 1) * 100) +
+                             ", quality: +" + String.format("%.0f%%", (qualityMultiplier - 1) * 100) + ")");
         }
         
         player.sendMessage("");

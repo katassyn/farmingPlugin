@@ -1,6 +1,9 @@
 package org.maks.farmingPlugin;
 
 import org.bukkit.Bukkit;
+import org.bukkit.World;
+import org.bukkit.entity.ArmorStand;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.maks.farmingPlugin.commands.PlantationCommand;
 import org.maks.farmingPlugin.database.DatabaseManager;
@@ -8,7 +11,9 @@ import org.maks.farmingPlugin.listeners.PlantationListeners;
 import org.maks.farmingPlugin.managers.*;
 import org.maks.farmingPlugin.materials.MaterialManager;
 import org.maks.farmingPlugin.fruits.FruitType;
+import org.maks.farmingPlugin.farms.FarmInstance;
 
+import java.util.List;
 import java.util.logging.Level;
 
 public final class FarmingPlugin extends JavaPlugin {
@@ -210,15 +215,112 @@ public final class FarmingPlugin extends JavaPlugin {
         getLogger().info("Metrics enabled");
     }
 
+    /**
+     * Reload hologram system with new configuration
+     */
+    public void reloadHologramSystem() {
+        getLogger().info("Reloading hologram system...");
+        
+        // Cleanup old hologram manager
+        if (hologramManager != null) {
+            hologramManager.cleanup();
+            hologramManager = null;
+        }
+        
+        // Reload configuration
+        reloadConfig();
+        
+        // Check if holograms should be enabled
+        if (getConfig().getBoolean("plantations.holograms.enabled", true)) {
+            getLogger().info("Initializing new hologram system...");
+            
+            // Create new hologram manager
+            hologramManager = new HologramManager(this);
+            
+            // Update all farm holograms for online players
+            Bukkit.getScheduler().runTaskLater(this, () -> {
+                for (Player player : getServer().getOnlinePlayers()) {
+                    List<FarmInstance> farms = plantationManager.getPlayerFarms(player.getUniqueId());
+                    for (FarmInstance farm : farms) {
+                        if (farm.getLocation() != null) {
+                            hologramManager.updateHologram(farm, true);
+                        }
+                    }
+                }
+                getLogger().info("✔ Hologram system reloaded successfully!");
+            }, 20L); // 1 second delay
+        } else {
+            getLogger().info("Hologram system disabled in configuration");
+        }
+    }
+
+    /**
+     * Debug helper for holograms
+     */
+    public void debugHolograms() {
+        if (!getConfig().getBoolean("debug", false)) return;
+        
+        getLogger().info("=== Hologram System Debug ===");
+        getLogger().info("Enabled: " + (hologramManager != null));
+        
+        if (hologramManager != null) {
+            int playerCount = 0;
+            int totalFarms = 0;
+            int hologramCount = 0;
+            
+            for (Player player : getServer().getOnlinePlayers()) {
+                List<FarmInstance> farms = plantationManager.getPlayerFarms(player.getUniqueId());
+                if (!farms.isEmpty()) {
+                    playerCount++;
+                    totalFarms += farms.size();
+                    
+                    for (FarmInstance farm : farms) {
+                        if (hologramManager.hasHologram(farm)) {
+                            hologramCount++;
+                        }
+                    }
+                }
+            }
+            
+            getLogger().info("Players with farms: " + playerCount);
+            getLogger().info("Total farms: " + totalFarms);
+            getLogger().info("Active holograms: " + hologramCount);
+            getLogger().info("Y-Offset: " + getConfig().getDouble("plantations.holograms.y_offset", 1.5));
+        }
+        
+        int totalArmorStands = 0;
+        int hologramArmorStands = 0;
+        
+        for (World world : getServer().getWorlds()) {
+            for (ArmorStand stand : world.getEntitiesByClass(ArmorStand.class)) {
+                totalArmorStands++;
+                
+                if (stand.isMarker() && stand.isSmall() && !stand.isVisible() && 
+                    stand.isCustomNameVisible() && stand.getCustomName() != null) {
+                    hologramArmorStands++;
+                }
+            }
+        }
+        
+        getLogger().info("Total armor stands in all worlds: " + totalArmorStands);
+        getLogger().info("Hologram armor stands: " + hologramArmorStands);
+        getLogger().info("=============================");
+    }
+
     // Reload configuration
     public void reloadConfiguration() {
         reloadConfig();
         
         // Reload manager configurations if needed
         if (plantationManager != null) {
-            // Reload farm configurations
             getLogger().info("Configuration reloaded!");
         }
+        
+        // Reload hologram system with new config and refresh farms
+        reloadHologramSystem();
+        
+        // Reload fruit types as they may depend on config values
+        org.maks.farmingPlugin.fruits.FruitType.initialize(this);
     }
 
     // Getters for managers

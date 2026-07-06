@@ -17,6 +17,7 @@ import org.maks.farmingPlugin.farms.FarmInstance;
 import org.bukkit.ChatColor;
 import org.bukkit.persistence.PersistentDataType;
 
+import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -134,18 +135,15 @@ public class PlantationAreaManager {
 
     private void loadAllPlayerAreas() {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            try {
-                String sql = "SELECT DISTINCT uuid FROM farming_player_plots";
-                PreparedStatement stmt = plugin.getDatabaseManager().prepareStatement(sql);
-                ResultSet rs = stmt.executeQuery();
+            String sql = "SELECT DISTINCT uuid FROM farming_player_plots";
+            try (Connection conn = plugin.getDatabaseManager().getConnection();
+                 PreparedStatement stmt = conn.prepareStatement(sql);
+                 ResultSet rs = stmt.executeQuery()) {
 
                 while (rs.next()) {
                     UUID uuid = UUID.fromString(rs.getString("uuid"));
                     loadPlayerArea(uuid);
                 }
-
-                rs.close();
-                stmt.close();
 
                 plugin.getLogger().info("Loaded " + areas.size() + " player plantation areas");
             } catch (SQLException e) {
@@ -317,41 +315,82 @@ public class PlantationAreaManager {
 
         Location origin = area.origin;
         UUID uid = player.getUniqueId();
-        
+
+        // NAPRAWIONE: Agresywne czyszczenie hologramów PRZED regeneracją
+        if (plugin.getHologramManager() != null) {
+            plugin.getLogger().info("Cleaning up holograms for " + player.getName() + " before regeneration...");
+
+            // Usuń wszystkie hologramy gracza
+            plugin.getHologramManager().removePlayerHolograms(uid);
+
+            // Poczekaj chwilę na pewność że się usunęły
+            try {
+                Thread.sleep(100); // 100ms delay
+            } catch (InterruptedException e) {
+                // Ignore
+            }
+
+            // Dodatkowo wyczyść wszystkie armor standy w obszarze plantacji
+            int cleanRadius = Math.max(plotWidth, plotDepth) + 5;
+            Location center = origin.clone().add(plotWidth/2, 0, plotDepth/2);
+
+            for (org.bukkit.entity.Entity entity : center.getWorld().getNearbyEntities(center, cleanRadius, 10, cleanRadius)) {
+                if (entity instanceof org.bukkit.entity.ArmorStand stand) {
+                    if (stand.isMarker() && stand.isSmall() && !stand.isVisible() &&
+                            stand.isCustomNameVisible() && stand.getCustomName() != null) {
+                        // To prawdopodobnie hologram - usuń
+                        stand.remove();
+                    }
+                }
+            }
+        }
+
         // Clear and rebuild the basic structure
         buildPlotStructure(origin);
 
         // Get player's owned farms
         List<FarmInstance> owned = plugin.getPlantationManager().getPlayerFarms(uid);
         Set<String> ownedKeys = owned.stream()
-            .map(fi -> key(fi.getFarmType(), fi.getInstanceId()))
-            .collect(Collectors.toSet());
+                .map(fi -> key(fi.getFarmType(), fi.getInstanceId()))
+                .collect(Collectors.toSet());
 
         // Process each farm type
         for (Map.Entry<FarmType, List<int[]>> entry : FARM_LAYOUT.entrySet()) {
             FarmType type = entry.getKey();
             List<int[]> positions = entry.getValue();
-            
+
             for (int i = 0; i < positions.size(); i++) {
                 int[] relativePos = positions.get(i);
                 Location farmLoc = origin.clone().add(relativePos[0], 0, relativePos[1]);
                 String k = key(type, i + 1);
-                
+
                 // Place grass underneath
                 world.getBlockAt(farmLoc.getBlockX(), farmLoc.getBlockY() - 1, farmLoc.getBlockZ())
-                    .setType(Material.GRASS_BLOCK);
-                
+                        .setType(Material.GRASS_BLOCK);
+
                 if (ownedKeys.contains(k)) {
                     // Player owns this farm - place the farm block
                     placeFarmBlock(farmLoc, type);
 
-                    // Update hologram
+                    // NAPRAWIONE: Odłóż tworzenie hologramu na później
                     FarmInstance farm = plugin.getPlantationManager()
-                        .getFarmInstance(uid, type, i + 1);
+                            .getFarmInstance(uid, type, i + 1);
                     if (farm != null) {
                         farm.setLocation(farmLoc);
+
+                        // Zaktualizuj storage items na podstawie czasu offline
+                        farm.updateStorageItems();
+
+                        // Utworzenie hologramu z opóźnieniem
                         if (plugin.getHologramManager() != null) {
-                            plugin.getHologramManager().updateHologram(farm);
+                            final int finalI = i;
+                            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                                FarmInstance delayedFarm = plugin.getPlantationManager()
+                                        .getFarmInstance(uid, type, finalI + 1);
+                                if (delayedFarm != null) {
+                                    plugin.getHologramManager().updateHologram(delayedFarm, true);
+                                }
+                            }, 20L + (i * 2L)); // Opóźnienie 1 sekunda + 0.1s na każdą farmę
                         }
                     }
                 } else if (type == FarmType.BERRY_ORCHARDS) {
@@ -371,6 +410,8 @@ public class PlantationAreaManager {
                 }
             }
         }
+
+        plugin.getLogger().info("Plantation regeneration complete for " + player.getName());
     }
 
     private String key(FarmType t, int id) {
@@ -432,7 +473,8 @@ public class PlantationAreaManager {
             int x1 = origin.getBlockX();
             int z1 = origin.getBlockZ();
 
-            return x >= x1 && x < x1 + width && z >= z1 && z < z1 + depth;
+            // Add small buffer to prevent issues at edges
+            return x >= x1 - 1 && x < x1 + width + 1 && z >= z1 - 1 && z < z1 + depth + 1;
         }
 
         public UUID getOwner() {

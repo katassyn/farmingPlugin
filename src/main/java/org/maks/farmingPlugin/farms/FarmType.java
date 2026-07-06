@@ -6,7 +6,7 @@ import org.maks.farmingPlugin.materials.MaterialType;
 import java.util.Map;
 
 public enum FarmType {
-    BERRY_ORCHARDS("berry_orchards", "Berry Orchards", Material.SWEET_BERRY_BUSH, 0, 6, 8, 500),
+    BERRY_ORCHARDS("berry_orchards", "Berry Orchards", Material.SWEET_BERRY_BUSH, 50000000L, 6, 8, 500),
     MELON_GROVES("melon_groves", "Melon Groves", Material.MELON, 250000000L, 6, 10, 400),
     FUNGAL_CAVERNS("fungal_caverns", "Fungal Caverns", Material.RED_MUSHROOM_BLOCK, 500000000L, 6, 14, 350),
     PUMPKIN_PATCHES("pumpkin_patches", "Pumpkin Patches", Material.PUMPKIN, 750000000L, 6, 16, 300),

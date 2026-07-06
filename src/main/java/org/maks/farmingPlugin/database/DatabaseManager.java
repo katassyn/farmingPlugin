@@ -4,6 +4,8 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.maks.farmingPlugin.FarmingPlugin;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 
 import java.sql.*;
 import java.util.Optional;
@@ -12,7 +14,7 @@ import java.util.logging.Level;
 
 public class DatabaseManager {
     private final FarmingPlugin plugin;
-    private Connection connection;
+    private HikariDataSource dataSource;
 
     private String host, database, username, password;
     private int port;
@@ -39,62 +41,104 @@ public class DatabaseManager {
 
     public void connect() {
         try {
-            if (connection != null && !connection.isClosed()) {
+            if (dataSource != null && !dataSource.isClosed()) {
                 return;
             }
 
             synchronized (this) {
-                if (connection != null && !connection.isClosed()) {
+                if (dataSource != null && !dataSource.isClosed()) {
                     return;
                 }
 
+                // Configure HikariCP
+                HikariConfig config = new HikariConfig();
+                
                 // Try relocated driver first, then fall back to original
                 try {
                     Class.forName("org.maks.farmingPlugin.libs.mysql.cj.jdbc.Driver");
+                    config.setDriverClassName("org.maks.farmingPlugin.libs.mysql.cj.jdbc.Driver");
                     plugin.getLogger().info("Using relocated MySQL driver");
                 } catch (ClassNotFoundException e) {
                     plugin.getLogger().warning("Relocated MySQL driver not found, trying original...");
-                    Class.forName("com.mysql.cj.jdbc.Driver");
+                    config.setDriverClassName("com.mysql.cj.jdbc.Driver");
                     plugin.getLogger().info("Using original MySQL driver");
                 }
                 
                 String jdbcUrl = "jdbc:mysql://" + host + ":" + port + "/" + database + 
-                    "?useSSL=false&serverTimezone=UTC&autoReconnect=true";
-                plugin.getLogger().info("Connecting to database: " + host + ":" + port + "/" + database);
+                    "?useSSL=false&serverTimezone=UTC&autoReconnect=true&useUnicode=true&characterEncoding=UTF-8";
                 
-                connection = DriverManager.getConnection(jdbcUrl, username, password);
+                config.setJdbcUrl(jdbcUrl);
+                config.setUsername(username);
+                config.setPassword(password);
                 
-                // Enable auto-reconnect
-                connection.setAutoCommit(true);
+                // Connection pool settings from config or defaults
+                config.setMaximumPoolSize(plugin.getConfig().getInt("database.hikari.maximum_pool_size", 10));
+                config.setMinimumIdle(plugin.getConfig().getInt("database.hikari.minimum_idle", 5));
+                config.setConnectionTimeout(plugin.getConfig().getLong("database.hikari.connection_timeout", 30000));
+                config.setIdleTimeout(plugin.getConfig().getLong("database.hikari.idle_timeout", 600000));
+                config.setMaxLifetime(plugin.getConfig().getLong("database.hikari.max_lifetime", 1800000));
+                config.setLeakDetectionThreshold(plugin.getConfig().getLong("database.hikari.leak_detection_threshold", 60000));
                 
-                plugin.getLogger().info("Successfully connected to MySQL database!");
+                // Connection properties
+                config.addDataSourceProperty("cachePrepStmts", "true");
+                config.addDataSourceProperty("prepStmtCacheSize", "250");
+                config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
+                config.addDataSourceProperty("useServerPrepStmts", "true");
+                config.addDataSourceProperty("rewriteBatchedStatements", "true");
+                config.addDataSourceProperty("cacheResultSetMetadata", "true");
+                config.addDataSourceProperty("cacheServerConfiguration", "true");
+                config.addDataSourceProperty("elideSetAutoCommits", "true");
+                config.addDataSourceProperty("maintainTimeStats", "false");
+                
+                config.setPoolName("FarmingPlugin-HikariCP");
+                
+                plugin.getLogger().info("Initializing HikariCP connection pool to: " + host + ":" + port + "/" + database);
+                
+                dataSource = new HikariDataSource(config);
+                
+                // Test the connection
+                try (Connection testConnection = dataSource.getConnection()) {
+                    if (testConnection.isValid(5)) {
+                        plugin.getLogger().info("Successfully connected to MySQL database with HikariCP!");
+                        plugin.getLogger().info("Connection pool initialized with " + config.getMaximumPoolSize() + " max connections");
+                    }
+                }
             }
-        } catch (SQLException | ClassNotFoundException e) {
+        } catch (SQLException e) {
             plugin.getLogger().log(Level.SEVERE, "Could not connect to MySQL database!", e);
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.SEVERE, "Error initializing database connection!", e);
         }
     }
 
     public void disconnect() {
-        if (connection != null) {
+        if (dataSource != null && !dataSource.isClosed()) {
             try {
-                connection.close();
-                plugin.getLogger().info("Disconnected from MySQL database!");
-            } catch (SQLException e) {
-                plugin.getLogger().log(Level.SEVERE, "Could not disconnect from MySQL database!", e);
+                dataSource.close();
+                plugin.getLogger().info("HikariCP connection pool closed!");
+            } catch (Exception e) {
+                plugin.getLogger().log(Level.SEVERE, "Could not close HikariCP connection pool!", e);
             }
         }
     }
 
     public Connection getConnection() {
         try {
-            if (connection == null || connection.isClosed() || !connection.isValid(1)) {
+            if (dataSource == null || dataSource.isClosed()) {
                 connect();
             }
+            return dataSource.getConnection();
         } catch (SQLException e) {
-            plugin.getLogger().log(Level.SEVERE, "Could not check connection status!", e);
+            plugin.getLogger().log(Level.SEVERE, "Could not get connection from pool!", e);
+            // Try to reconnect
             connect();
+            try {
+                return dataSource != null ? dataSource.getConnection() : null;
+            } catch (SQLException e2) {
+                plugin.getLogger().log(Level.SEVERE, "Failed to get connection after reconnect!", e2);
+                return null;
+            }
         }
-        return connection;
     }
 
     public void createTables() {
@@ -110,6 +154,10 @@ public class DatabaseManager {
                 last_harvest BIGINT NOT NULL,
                 total_harvests INT DEFAULT 0,
                 exp INT DEFAULT 0,
+                storage_upgrade_level INT DEFAULT 0,
+                speed_upgrade_level INT DEFAULT 0,
+                quality_upgrade_level INT DEFAULT 0,
+                current_stored_items INT DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 INDEX idx_uuid (uuid),
@@ -256,7 +304,8 @@ public class DatabaseManager {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """;
 
-        try (Statement stmt = getConnection().createStatement()) {
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement()) {
             // Execute all table creation statements
             stmt.executeUpdate(playerPlantationsTable);
             stmt.executeUpdate(playerMaterialsTable);
@@ -273,6 +322,9 @@ public class DatabaseManager {
 
             // Create stored procedures for complex operations
             createStoredProcedures();
+            
+            // Run database migrations
+            runDatabaseMigrations();
             
         } catch (SQLException e) {
             plugin.getLogger().log(Level.SEVERE, "Could not create database tables!", e);
@@ -319,7 +371,8 @@ public class DatabaseManager {
             END
             """;
 
-        try (Statement stmt = getConnection().createStatement()) {
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement()) {
             stmt.execute("DROP PROCEDURE IF EXISTS GetPlayerMaterialCount");
             stmt.execute(getMaterialCountProc);
             
@@ -332,9 +385,51 @@ public class DatabaseManager {
         }
     }
 
-    public PreparedStatement prepareStatement(String sql) throws SQLException {
-        return getConnection().prepareStatement(sql);
+    private void runDatabaseMigrations() {
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement()) {
+            // Migration 1: Add upgrade level columns to farming_player_plantations if they don't exist
+            try {
+                stmt.executeUpdate("ALTER TABLE farming_player_plantations ADD COLUMN storage_upgrade_level INT DEFAULT 0");
+                plugin.getLogger().info("Added storage_upgrade_level column to farming_player_plantations");
+            } catch (SQLException e) {
+                if (!e.getMessage().contains("Duplicate column name")) {
+                    plugin.getLogger().warning("Failed to add storage_upgrade_level column: " + e.getMessage());
+                }
+            }
+            
+            try {
+                stmt.executeUpdate("ALTER TABLE farming_player_plantations ADD COLUMN speed_upgrade_level INT DEFAULT 0");
+                plugin.getLogger().info("Added speed_upgrade_level column to farming_player_plantations");
+            } catch (SQLException e) {
+                if (!e.getMessage().contains("Duplicate column name")) {
+                    plugin.getLogger().warning("Failed to add speed_upgrade_level column: " + e.getMessage());
+                }
+            }
+            
+            try {
+                stmt.executeUpdate("ALTER TABLE farming_player_plantations ADD COLUMN quality_upgrade_level INT DEFAULT 0");
+                plugin.getLogger().info("Added quality_upgrade_level column to farming_player_plantations");
+            } catch (SQLException e) {
+                if (!e.getMessage().contains("Duplicate column name")) {
+                    plugin.getLogger().warning("Failed to add quality_upgrade_level column: " + e.getMessage());
+                }
+            }
+            
+            try {
+                stmt.executeUpdate("ALTER TABLE farming_player_plantations ADD COLUMN current_stored_items INT DEFAULT 0");
+                plugin.getLogger().info("Added current_stored_items column to farming_player_plantations");
+            } catch (SQLException e) {
+                if (!e.getMessage().contains("Duplicate column name")) {
+                    plugin.getLogger().warning("Failed to add current_stored_items column: " + e.getMessage());
+                }
+            }
+            
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.SEVERE, "Could not run database migrations!", e);
+        }
     }
+
 
     // Player plot management
     public void savePlayerPlot(UUID uuid, String world, int x, int y, int z) {
@@ -343,7 +438,8 @@ public class DatabaseManager {
                     "world = VALUES(world), origin_x = VALUES(origin_x), " +
                     "origin_y = VALUES(origin_y), origin_z = VALUES(origin_z)";
         
-        try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, uuid.toString());
             ps.setString(2, world);
             ps.setInt(3, x);
@@ -358,7 +454,8 @@ public class DatabaseManager {
     public Optional<Location> loadPlayerPlot(UUID uuid) {
         String sql = "SELECT world, origin_x, origin_y, origin_z FROM farming_player_plots WHERE uuid = ?";
         
-        try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, uuid.toString());
             
             try (ResultSet rs = ps.executeQuery()) {
@@ -386,7 +483,8 @@ public class DatabaseManager {
         String sql = "INSERT INTO farming_player_stats (uuid, " + statType + ") VALUES (?, ?) " +
                     "ON DUPLICATE KEY UPDATE " + statType + " = " + statType + " + VALUES(" + statType + ")";
         
-        try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, uuid.toString());
             ps.setLong(2, value);
             ps.executeUpdate();
@@ -400,7 +498,8 @@ public class DatabaseManager {
         String sql = "INSERT INTO farming_player_settings (uuid, " + setting + ") VALUES (?, ?) " +
                     "ON DUPLICATE KEY UPDATE " + setting + " = VALUES(" + setting + ")";
         
-        try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, uuid.toString());
             ps.setObject(2, value);
             ps.executeUpdate();
@@ -412,7 +511,8 @@ public class DatabaseManager {
     public boolean getPlayerBooleanSetting(UUID uuid, String setting, boolean defaultValue) {
         String sql = "SELECT " + setting + " FROM farming_player_settings WHERE uuid = ?";
         
-        try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, uuid.toString());
             
             try (ResultSet rs = ps.executeQuery()) {
@@ -431,7 +531,8 @@ public class DatabaseManager {
     public int getPlayerMaterialAmount(UUID uuid, String materialType, int tier) {
         String sql = "SELECT amount FROM farming_player_materials WHERE uuid = ? AND material_type = ? AND tier = ?";
         
-        try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, uuid.toString());
             ps.setString(2, materialType);
             ps.setInt(3, tier);
@@ -454,7 +555,8 @@ public class DatabaseManager {
                     "amount = amount + VALUES(amount), " +
                     "total_collected = total_collected + IF(VALUES(amount) > 0, VALUES(amount), 0)";
         
-        try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, uuid.toString());
             ps.setString(2, materialType);
             ps.setInt(3, tier);
@@ -471,7 +573,8 @@ public class DatabaseManager {
         String sql = "INSERT INTO farming_farm_unlocks (uuid, farm_type, unlock_cost, materials_used_json) " +
                     "VALUES (?, ?, ?, ?)";
         
-        try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, uuid.toString());
             ps.setString(2, farmType);
             ps.setDouble(3, cost);
@@ -485,7 +588,8 @@ public class DatabaseManager {
     public boolean isFarmUnlocked(UUID uuid, String farmType) {
         String sql = "SELECT 1 FROM farming_farm_unlocks WHERE uuid = ? AND farm_type = ?";
         
-        try (PreparedStatement ps = getConnection().prepareStatement(sql)) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, uuid.toString());
             ps.setString(2, farmType);
             

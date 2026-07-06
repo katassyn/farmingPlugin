@@ -186,7 +186,7 @@ public class MaterialManager {
 
     /**
      * Try to parse a material type from a stripped display name.
-     * Supports some legacy/alias names for compatibility.
+     * Supports legacy/alias names and common variations for compatibility.
      */
     private MaterialType parseMaterialType(String strippedName) {
         if (strippedName == null) {
@@ -198,15 +198,28 @@ public class MaterialManager {
         if (strippedName.startsWith("[") && endBracket > 0 && endBracket < strippedName.length() - 1) {
             String namePart = strippedName.substring(endBracket + 1).trim();
 
+            // Check each material type
             for (MaterialType type : MaterialType.values()) {
+                // Exact match
                 if (type.getDisplayName().equalsIgnoreCase(namePart)) {
                     return type;
                 }
-                // Legacy/alias names
-                if (namePart.equalsIgnoreCase("Herbal Extract") && type == MaterialType.HERB_EXTRACT) {
+                
+                // Check common variations
+                if (type == MaterialType.HERB_EXTRACT && 
+                    (namePart.equalsIgnoreCase("Herbal Extract") || 
+                     namePart.equalsIgnoreCase("Herb Extract"))) {
                     return type;
                 }
-                if (namePart.equalsIgnoreCase("Ancient Grain Sheaf") && type == MaterialType.ANCIENT_GRAIN) {
+                
+                if (type == MaterialType.ANCIENT_GRAIN && 
+                    (namePart.equalsIgnoreCase("Ancient Grain Sheaf") || 
+                     namePart.equalsIgnoreCase("Ancient Grain"))) {
+                    return type;
+                }
+                
+                // Check if the name contains the material ID (fallback)
+                if (namePart.toLowerCase().replace(" ", "_").contains(type.getId())) {
                     return type;
                 }
             }
@@ -252,57 +265,131 @@ public class MaterialManager {
 
     /**
      * Count a specific farming material in the player's inventory.
+     * Enhanced to check both NBT and display name for compatibility.
      */
     public int countMaterialInInventory(Player player, MaterialType materialType, int tier) {
         int count = 0;
+        String expectedName = "[ " + getTierRoman(tier) + " ] " + materialType.getDisplayName();
+
+        plugin.debug("Counting " + expectedName + " in inventory");
 
         for (ItemStack item : player.getInventory().getContents()) {
             if (item == null) continue;
 
+            boolean isMatch = false;
+            
+            // Check by NBT first (most reliable)
             if (isFarmingMaterial(item)) {
                 MaterialType itemType = getMaterialType(item);
                 int itemTier = getMaterialTier(item);
-
+                
                 if (itemType == materialType && itemTier == tier) {
-                    count += item.getAmount();
+                    isMatch = true;
                 }
+            }
+            
+            // Also check by display name for compatibility
+            if (!isMatch && item.hasItemMeta() && item.getItemMeta().hasDisplayName()) {
+                String displayName = ChatColor.stripColor(item.getItemMeta().getDisplayName());
+                
+                // Check exact match
+                if (displayName.equals(expectedName)) {
+                    isMatch = true;
+                }
+                
+                // Also check with variations (e.g., "Herbal Extract" vs "Herb Extract")
+                if (!isMatch && displayName.matches("\\[\\s*" + getTierRoman(tier) + "\\s*\\]\\s*.*")) {
+                    String namePart = displayName.replaceFirst("\\[\\s*[IVX]+\\s*\\]\\s*", "").trim();
+                    
+                    // Check common variations
+                    if (materialType == MaterialType.HERB_EXTRACT && 
+                        (namePart.equalsIgnoreCase("Herbal Extract") || 
+                         namePart.equalsIgnoreCase("Herb Extract"))) {
+                        isMatch = true;
+                    } else if (materialType.getDisplayName().equalsIgnoreCase(namePart)) {
+                        isMatch = true;
+                    }
+                }
+            }
+            
+            if (isMatch) {
+                count += item.getAmount();
+                plugin.debug("Found " + item.getAmount() + "x in slot");
             }
         }
 
+        plugin.debug("Total found: " + count);
         return count;
     }
 
     /**
      * Remove a specific amount of material from the player's inventory.
+     * Enhanced to check both NBT and display name for compatibility.
      *
      * @return amount actually removed
      */
     public int removeMaterialFromInventory(Player player, MaterialType materialType, int tier, int amount) {
         int remaining = amount;
+        String expectedName = "[ " + getTierRoman(tier) + " ] " + materialType.getDisplayName();
+
+        plugin.debug("Removing " + amount + "x " + expectedName);
 
         for (ItemStack item : player.getInventory().getContents()) {
             if (item == null || remaining <= 0) continue;
 
+            boolean isMatch = false;
+            
+            // Check by NBT first
             if (isFarmingMaterial(item)) {
                 MaterialType itemType = getMaterialType(item);
                 int itemTier = getMaterialTier(item);
-
+                
                 if (itemType == materialType && itemTier == tier) {
-                    int stackSize = item.getAmount();
-
-                    if (stackSize <= remaining) {
-                        item.setAmount(0);
-                        remaining -= stackSize;
-                    } else {
-                        item.setAmount(stackSize - remaining);
-                        remaining = 0;
+                    isMatch = true;
+                }
+            }
+            
+            // Also check by display name
+            if (!isMatch && item.hasItemMeta() && item.getItemMeta().hasDisplayName()) {
+                String displayName = ChatColor.stripColor(item.getItemMeta().getDisplayName());
+                
+                if (displayName.equals(expectedName)) {
+                    isMatch = true;
+                }
+                
+                // Check variations
+                if (!isMatch && displayName.matches("\\[\\s*" + getTierRoman(tier) + "\\s*\\]\\s*.*")) {
+                    String namePart = displayName.replaceFirst("\\[\\s*[IVX]+\\s*\\]\\s*", "").trim();
+                    
+                    if (materialType == MaterialType.HERB_EXTRACT && 
+                        (namePart.equalsIgnoreCase("Herbal Extract") || 
+                         namePart.equalsIgnoreCase("Herb Extract"))) {
+                        isMatch = true;
+                    } else if (materialType.getDisplayName().equalsIgnoreCase(namePart)) {
+                        isMatch = true;
                     }
+                }
+            }
+
+            if (isMatch) {
+                int stackSize = item.getAmount();
+
+                if (stackSize <= remaining) {
+                    item.setAmount(0);
+                    remaining -= stackSize;
+                    plugin.debug("Removed entire stack: " + stackSize);
+                } else {
+                    item.setAmount(stackSize - remaining);
+                    plugin.debug("Removed partial: " + remaining);
+                    remaining = 0;
                 }
             }
         }
 
         player.updateInventory();
-        return amount - remaining;
+        int removed = amount - remaining;
+        plugin.debug("Total removed: " + removed);
+        return removed;
     }
 
     /**

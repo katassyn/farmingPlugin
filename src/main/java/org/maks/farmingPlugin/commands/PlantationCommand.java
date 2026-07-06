@@ -9,6 +9,8 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.ArmorStand;
+import org.bukkit.World;
 import org.bukkit.inventory.ItemStack;
 import org.maks.farmingPlugin.FarmingPlugin;
 import org.maks.farmingPlugin.farms.FarmInstance;
@@ -20,6 +22,10 @@ import org.maks.farmingPlugin.gui.PlantationTeleportGUI;
 import org.maks.farmingPlugin.materials.MaterialType;
 import org.maks.farmingPlugin.managers.PlantationAreaManager;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -134,6 +140,24 @@ public class PlantationCommand implements CommandExecutor, TabCompleter {
                 }
             }
             case "top", "leaderboard" -> showLeaderboard(player);
+            case "testmaterials", "checkmaterials" -> {
+                if (player.hasPermission("plantation.admin")) {
+                    testMaterialDetection(player);
+                } else {
+                    player.sendMessage(ChatColor.RED + "You don't have permission to use this command!");
+                }
+            }
+            case "hologram", "holo" -> {
+                if (player.hasPermission("plantation.admin")) {
+                    if (args.length > 1) {
+                        manageHolograms(player, Arrays.copyOfRange(args, 1, args.length));
+                    } else {
+                        sendHologramHelp(player);
+                    }
+                } else {
+                    player.sendMessage(ChatColor.RED + "You don't have permission to use this command!");
+                }
+            }
             default -> sendHelpMessage(player);
         }
 
@@ -165,7 +189,17 @@ public class PlantationCommand implements CommandExecutor, TabCompleter {
         
         player.teleport(plantationLocation);
         player.sendMessage(ChatColor.GREEN + "✔ Welcome to your plantation!");
-        
+
+// Schedule a nearby hologram-like armor stand cleanup at player location (20-block radius)
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            String cmd = String.format(
+                    "execute as %s at %s run kill @e[type=minecraft:armor_stand,distance=..20,nbt={Invisible:1b,NoGravity:1b,CustomNameVisible:1b}]",
+                    player.getName(),
+                    player.getName()
+            );
+            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), cmd);
+        });
+
         // Effects at arrival
         player.playSound(plantationLocation, Sound.ENTITY_ENDERMAN_TELEPORT, 1.0f, 1.0f);
         player.getWorld().spawnParticle(
@@ -247,11 +281,11 @@ public class PlantationCommand implements CommandExecutor, TabCompleter {
         player.sendMessage(ChatColor.GOLD + "║       " + ChatColor.YELLOW + "DETAILED STATISTICS" + ChatColor.GOLD + "       ║");
         player.sendMessage(ChatColor.GOLD + "╚════════════════════════════════════╝");
         
-        try {
-            String sql = "SELECT * FROM farming_player_stats WHERE uuid = ?";
-            var stmt = plugin.getDatabaseManager().prepareStatement(sql);
+        String sql = "SELECT * FROM farming_player_stats WHERE uuid = ?";
+        try (Connection conn = plugin.getDatabaseManager().getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, player.getUniqueId().toString());
-            var rs = stmt.executeQuery();
+            try (ResultSet rs = stmt.executeQuery()) {
             
             if (rs.next()) {
                 player.sendMessage(ChatColor.YELLOW + "General Stats:");
@@ -280,13 +314,11 @@ public class PlantationCommand implements CommandExecutor, TabCompleter {
                     player.sendMessage(ChatColor.GRAY + "  Harvests: " + farm.getTotalHarvests() + 
                                      " | Produced: " + farm.getTotalMaterialsProduced());
                 }
-            } else {
-                player.sendMessage(ChatColor.GRAY + "No statistics available yet!");
+                } else {
+                    player.sendMessage(ChatColor.GRAY + "No statistics available yet!");
+                }
             }
-            
-            rs.close();
-            stmt.close();
-        } catch (Exception e) {
+        } catch (SQLException e) {
             player.sendMessage(ChatColor.RED + "Error loading statistics!");
             plugin.getLogger().warning("Failed to load stats for " + player.getName() + ": " + e.getMessage());
         }
@@ -358,10 +390,11 @@ public class PlantationCommand implements CommandExecutor, TabCompleter {
             
             for (String table : tables) {
                 String sql = "DELETE FROM " + table + " WHERE uuid = ?";
-                var stmt = plugin.getDatabaseManager().prepareStatement(sql);
-                stmt.setString(1, targetUuid.toString());
-                stmt.executeUpdate();
-                stmt.close();
+                try (Connection conn = plugin.getDatabaseManager().getConnection();
+                     PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    stmt.setString(1, targetUuid.toString());
+                    stmt.executeUpdate();
+                }
             }
             
             player.sendMessage(ChatColor.GREEN + "✔ Plantation reset for " + targetName + " completed!");
@@ -577,11 +610,11 @@ public class PlantationCommand implements CommandExecutor, TabCompleter {
         player.sendMessage(ChatColor.GOLD + "║        " + ChatColor.YELLOW + "TOP FARMERS" + ChatColor.GOLD + "              ║");
         player.sendMessage(ChatColor.GOLD + "╚════════════════════════════════════╝");
         
-        try {
-            String sql = "SELECT uuid, total_materials_collected FROM farming_player_stats " +
-                        "ORDER BY total_materials_collected DESC LIMIT 10";
-            var stmt = plugin.getDatabaseManager().prepareStatement(sql);
-            var rs = stmt.executeQuery();
+        String sql = "SELECT uuid, total_materials_collected FROM farming_player_stats " +
+                    "ORDER BY total_materials_collected DESC LIMIT 10";
+        try (Connection conn = plugin.getDatabaseManager().getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
             
             int position = 1;
             while (rs.next()) {
@@ -599,10 +632,7 @@ public class PlantationCommand implements CommandExecutor, TabCompleter {
                                  String.format("%,d", materials) + " materials");
                 position++;
             }
-            
-            rs.close();
-            stmt.close();
-        } catch (Exception e) {
+        } catch (SQLException e) {
             player.sendMessage(ChatColor.RED + "Error loading leaderboard!");
         }
     }
@@ -659,11 +689,12 @@ public class PlantationCommand implements CommandExecutor, TabCompleter {
             for (String table : tables) {
                 try {
                     String sql = "DELETE FROM " + table;
-                    var stmt = plugin.getDatabaseManager().prepareStatement(sql);
-                    int deleted = stmt.executeUpdate();
-                    stmt.close();
-                    player.sendMessage(ChatColor.GRAY + "Cleared " + table + " (" + deleted + " records)");
-                } catch (Exception e) {
+                    try (Connection conn = plugin.getDatabaseManager().getConnection();
+                         PreparedStatement stmt = conn.prepareStatement(sql)) {
+                        int deleted = stmt.executeUpdate();
+                        player.sendMessage(ChatColor.GRAY + "Cleared " + table + " (" + deleted + " records)");
+                    }
+                } catch (SQLException e) {
                     player.sendMessage(ChatColor.RED + "Failed to clear " + table + ": " + e.getMessage());
                 }
             }
@@ -693,6 +724,221 @@ public class PlantationCommand implements CommandExecutor, TabCompleter {
         }
     }
 
+    // === HOLOGRAM ADMIN COMMANDS ===
+    private void manageHolograms(Player player, String[] args) {
+        if (args.length == 0) {
+            sendHologramHelp(player);
+            return;
+        }
+        
+        String subCommand = args[0].toLowerCase();
+        
+        switch (subCommand) {
+            case "refresh", "reload" -> {
+                if (plugin.getHologramManager() == null) {
+                    player.sendMessage(ChatColor.RED + "Hologram system is disabled!");
+                    return;
+                }
+                plugin.getHologramManager().forceRefreshAll();
+                player.sendMessage(ChatColor.GREEN + "✔ All holograms have been refreshed!");
+            }
+            case "cleanup", "clean" -> {
+                if (plugin.getHologramManager() == null) {
+                    player.sendMessage(ChatColor.RED + "Hologram system is disabled!");
+                    return;
+                }
+                cleanupAllArmorStands(player);
+            }
+            case "debug", "info" -> {
+                showHologramDebugInfo(player);
+            }
+            case "test" -> {
+                if (plugin.getHologramManager() == null) {
+                    player.sendMessage(ChatColor.RED + "Hologram system is disabled!");
+                    return;
+                }
+                testHologram(player);
+            }
+            case "offset" -> {
+                if (args.length < 2) {
+                    player.sendMessage(ChatColor.RED + "Usage: /plantation hologram offset <value>");
+                    return;
+                }
+                try {
+                    double offset = Double.parseDouble(args[1]);
+                    plugin.getConfig().set("plantations.holograms.y_offset", offset);
+                    plugin.saveConfig();
+                    
+                    // Cleanup current manager to allow new offset on reload
+                    if (plugin.getHologramManager() != null) {
+                        plugin.getHologramManager().cleanup();
+                    }
+                    player.sendMessage(ChatColor.GREEN + "✔ Y-offset set to " + offset + ". Restart or reload to apply.");
+                } catch (NumberFormatException e) {
+                    player.sendMessage(ChatColor.RED + "Invalid number format!");
+                }
+            }
+            case "remove" -> {
+                if (args.length < 2) {
+                    if (plugin.getHologramManager() != null) {
+                        plugin.getHologramManager().removePlayerHolograms(player.getUniqueId());
+                        player.sendMessage(ChatColor.GREEN + "✔ Your holograms have been removed!");
+                    }
+                } else {
+                    String targetName = args[1];
+                    Player target = Bukkit.getPlayer(targetName);
+                    if (target != null && plugin.getHologramManager() != null) {
+                        plugin.getHologramManager().removePlayerHolograms(target.getUniqueId());
+                        player.sendMessage(ChatColor.GREEN + "✔ Removed holograms for " + target.getName());
+                    } else {
+                        player.sendMessage(ChatColor.RED + "Player not found or hologram system disabled!");
+                    }
+                }
+            }
+            case "update" -> {
+                if (plugin.getHologramManager() == null) {
+                    player.sendMessage(ChatColor.RED + "Hologram system is disabled!");
+                    return;
+                }
+                List<FarmInstance> farms = plugin.getPlantationManager().getPlayerFarms(player.getUniqueId());
+                for (FarmInstance farm : farms) {
+                    if (farm.getLocation() != null) {
+                        plugin.getHologramManager().updateHologram(farm, true);
+                    }
+                }
+                player.sendMessage(ChatColor.GREEN + "✔ Your farm holograms have been updated!");
+            }
+            default -> {
+                sendHologramHelp(player);
+            }
+        }
+    }
+
+    private void cleanupAllArmorStands(Player player) {
+        player.sendMessage(ChatColor.YELLOW + "Scanning for armor stands...");
+        
+        int totalRemoved = 0;
+        Map<String, Integer> removedByWorld = new HashMap<>();
+        
+        for (World world : Bukkit.getWorlds()) {
+            int worldRemoved = 0;
+            
+            for (ArmorStand stand : world.getEntitiesByClass(ArmorStand.class)) {
+                if (stand.isMarker() && stand.isSmall() && !stand.isVisible() && 
+                    stand.isCustomNameVisible() && stand.getCustomName() != null) {
+                    
+                    String name = stand.getCustomName();
+                    if (name.contains("Orchards") || name.contains("Groves") || 
+                        name.contains("Caverns") || name.contains("Patches") ||
+                        name.contains("Gardens") || name.contains("Mangroves") ||
+                        name.contains("Sanctuaries") || name.contains("READY") ||
+                        name.contains("Next:") || name.contains("Storage:") ||
+                        name.contains("Efficiency:") || name.contains("Quality") ||
+                        name.contains("Speed")) {
+                        
+                        stand.remove();
+                        worldRemoved++;
+                        totalRemoved++;
+                    }
+                }
+            }
+            
+            if (worldRemoved > 0) {
+                removedByWorld.put(world.getName(), worldRemoved);
+            }
+        }
+        
+        player.sendMessage(ChatColor.GREEN + "✔ Cleanup complete!");
+        player.sendMessage(ChatColor.GRAY + "Total removed: " + ChatColor.WHITE + totalRemoved);
+        
+        for (Map.Entry<String, Integer> entry : removedByWorld.entrySet()) {
+            player.sendMessage(ChatColor.GRAY + "  " + entry.getKey() + ": " + ChatColor.WHITE + entry.getValue());
+        }
+    }
+
+    private void showHologramDebugInfo(Player player) {
+        player.sendMessage(ChatColor.GOLD + "=== Hologram Debug Info ===");
+        
+        boolean enabled = plugin.getConfig().getBoolean("plantations.holograms.enabled", true);
+        player.sendMessage(ChatColor.YELLOW + "System Status:");
+        player.sendMessage(ChatColor.GRAY + "  Enabled: " + (enabled ? ChatColor.GREEN + "YES" : ChatColor.RED + "NO"));
+        
+        if (plugin.getHologramManager() != null) {
+            player.sendMessage(ChatColor.GRAY + "  Manager: " + ChatColor.GREEN + "ACTIVE");
+        } else {
+            player.sendMessage(ChatColor.GRAY + "  Manager: " + ChatColor.RED + "INACTIVE");
+        }
+        
+        player.sendMessage(ChatColor.YELLOW + "Configuration:");
+        double yOffset = plugin.getConfig().getDouble("plantations.holograms.y_offset", 1.5);
+        player.sendMessage(ChatColor.GRAY + "  Y-Offset: " + ChatColor.WHITE + yOffset);
+        
+        player.sendMessage(ChatColor.YELLOW + "Your Settings:");
+        boolean playerEnabled = plugin.getDatabaseManager()
+            .getPlayerBooleanSetting(player.getUniqueId(), "hologram_enabled", true);
+        player.sendMessage(ChatColor.GRAY + "  Holograms Enabled: " + (playerEnabled ? ChatColor.GREEN + "YES" : ChatColor.RED + "NO"));
+        
+        player.sendMessage(ChatColor.YELLOW + "Your Farm Holograms:");
+        List<FarmInstance> farms = plugin.getPlantationManager().getPlayerFarms(player.getUniqueId());
+        
+        if (farms.isEmpty()) {
+            player.sendMessage(ChatColor.GRAY + "  No farms found");
+        } else {
+            for (FarmInstance farm : farms) {
+                boolean hasHolo = plugin.getHologramManager() != null && plugin.getHologramManager().hasHologram(farm);
+                player.sendMessage(ChatColor.GRAY + "  " + farm.getFarmType().getDisplayName() + " #" + farm.getInstanceId() + ": " + (hasHolo ? ChatColor.GREEN + "ACTIVE" : ChatColor.RED + "MISSING"));
+                if (farm.getLocation() != null) {
+                    Location loc = farm.getLocation();
+                    player.sendMessage(ChatColor.DARK_GRAY + "    Location: " + loc.getBlockX() + ", " + loc.getBlockY() + ", " + loc.getBlockZ());
+                }
+            }
+        }
+        
+        player.sendMessage(ChatColor.YELLOW + "Nearby Armor Stands (10 block radius):");
+        int nearbyCount = 0;
+        int hologramCount = 0;
+        
+        for (org.bukkit.entity.Entity entity : player.getNearbyEntities(10, 10, 10)) {
+            if (entity instanceof ArmorStand stand) {
+                nearbyCount++;
+                if (stand.isMarker() && stand.isSmall() && !stand.isVisible() && 
+                    stand.isCustomNameVisible() && stand.getCustomName() != null) {
+                    hologramCount++;
+                }
+            }
+        }
+        
+        player.sendMessage(ChatColor.GRAY + "  Total: " + ChatColor.WHITE + nearbyCount);
+        player.sendMessage(ChatColor.GRAY + "  Holograms: " + ChatColor.WHITE + hologramCount);
+    }
+
+    private void testHologram(Player player) {
+        Location testLoc = player.getLocation().add(0, 2, 3);
+        
+        player.sendMessage(ChatColor.YELLOW + "Creating test hologram at your location...");
+        
+        plugin.getHologramManager().showFloatingText(
+            testLoc, 
+            "&a&lTEST HOLOGRAM\n&7If you see this,\n&7holograms are working!", 
+            5000
+        );
+        
+        player.sendMessage(ChatColor.GREEN + "✔ Test hologram created for 5 seconds!");
+        player.sendMessage(ChatColor.GRAY + "Look 3 blocks in front of you, 2 blocks up.");
+    }
+
+    private void sendHologramHelp(Player player) {
+        player.sendMessage(ChatColor.GOLD + "=== Hologram Commands ===");
+        player.sendMessage(ChatColor.YELLOW + "/plantation hologram <subcommand>");
+        player.sendMessage(ChatColor.GREEN + "  refresh" + ChatColor.GRAY + " - Refresh all holograms");
+        player.sendMessage(ChatColor.GREEN + "  cleanup" + ChatColor.GRAY + " - Remove all hologram armor stands");
+        player.sendMessage(ChatColor.GREEN + "  debug" + ChatColor.GRAY + " - Show debug information");
+        player.sendMessage(ChatColor.GREEN + "  test" + ChatColor.GRAY + " - Create a test hologram");
+        player.sendMessage(ChatColor.GREEN + "  offset <value>" + ChatColor.GRAY + " - Set Y-offset for holograms");
+        player.sendMessage(ChatColor.GREEN + "  remove [player]" + ChatColor.GRAY + " - Remove holograms");
+        player.sendMessage(ChatColor.GREEN + "  update" + ChatColor.GRAY + " - Update your farm holograms");
+    }
+
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         List<String> completions = new ArrayList<>();
@@ -702,11 +948,11 @@ public class PlantationCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length == 1) {
-            List<String> subCommands = Arrays.asList("tp", "info", "stats", "list", "settings", "help", "top");
+            List<String> subCommands = Arrays.asList("tp", "info", "stats", "list", "settings", "help", "top", "hologram", "holo");
             
             if (player.hasPermission("plantation.admin")) {
                 subCommands = new ArrayList<>(subCommands);
-                subCommands.addAll(Arrays.asList("reload", "reset", "debug", "give", "setlevel", "addexp", "forceharvest", "hardreset"));
+                subCommands.addAll(Arrays.asList("reload", "reset", "debug", "give", "setlevel", "addexp", "forceharvest", "hardreset", "testmaterials"));
             }
             
             for (String subCommand : subCommands) {
@@ -729,6 +975,8 @@ public class PlantationCommand implements CommandExecutor, TabCompleter {
                         completions.add(type.getId());
                     }
                 }
+            } else if (subCommand.equals("hologram") || subCommand.equals("holo")) {
+                completions.addAll(Arrays.asList("refresh", "cleanup", "debug", "test", "offset", "remove", "update"));
             }
         } else if (args.length == 3) {
             String subCommand = args[0].toLowerCase();
@@ -797,6 +1045,107 @@ public class PlantationCommand implements CommandExecutor, TabCompleter {
             return String.format("%dh %dm", hours, minutes % 60);
         } else {
             return minutes + "m";
+        }
+    }
+
+    /**
+     * Test material detection for debugging integration issues
+     */
+    private void testMaterialDetection(Player player) {
+        player.sendMessage(ChatColor.GOLD + "=== Material Detection Test ===");
+        player.sendMessage(ChatColor.YELLOW + "Checking your inventory and pouch...");
+        player.sendMessage(ChatColor.GRAY + "Pouch integration: " + 
+                          (plugin.getPouchIntegrationManager().isEnabled() ? "✅ ENABLED" : "❌ DISABLED"));
+        
+        // Test each material type
+        for (MaterialType type : MaterialType.values()) {
+            player.sendMessage(ChatColor.AQUA + type.getDisplayName() + " (" + type.getId() + "):");
+            
+            int totalInv = 0;
+            int totalPouch = 0;
+            
+            // Check all tiers
+            for (int tier = 1; tier <= 3; tier++) {
+                // Check inventory
+                int invCount = plugin.getMaterialManager().countMaterialInInventory(player, type, tier);
+                if (invCount > 0) {
+                    player.sendMessage(ChatColor.GREEN + "  Inventory T" + tier + ": " + invCount);
+                    totalInv += invCount;
+                }
+                
+                // Check pouch using the new public method
+                if (plugin.getPouchIntegrationManager().isEnabled()) {
+                    int pouchCount = plugin.getPouchIntegrationManager().getItemQuantityInPouch(player.getUniqueId(), type, tier);
+                    if (pouchCount > 0) {
+                        player.sendMessage(ChatColor.LIGHT_PURPLE + "  Pouch T" + tier + ": " + pouchCount);
+                        totalPouch += pouchCount;
+                    }
+                    
+                    // Show the pouch key being used
+                    String pouchKey = plugin.getPouchIntegrationManager().getPouchItemKey(type, tier);
+                    player.sendMessage(ChatColor.GRAY + "    (Key: " + pouchKey + ")");
+                }
+            }
+            
+            if (totalInv > 0 || totalPouch > 0) {
+                player.sendMessage(ChatColor.GOLD + "  📊 Total: " + (totalInv + totalPouch) + 
+                                 " (Inv: " + totalInv + ", Pouch: " + totalPouch + ")");
+            } else {
+                player.sendMessage(ChatColor.GRAY + "  None found");
+            }
+        }
+        
+        player.sendMessage(ChatColor.GOLD + "=== Test Complete ===");
+        
+        // Test specific item in hand
+        ItemStack itemInHand = player.getInventory().getItemInMainHand();
+        if (itemInHand != null && itemInHand.getType() != org.bukkit.Material.AIR) {
+            player.sendMessage("");
+            player.sendMessage(ChatColor.YELLOW + "🔍 Item in hand analysis:");
+            
+            if (itemInHand.hasItemMeta() && itemInHand.getItemMeta().hasDisplayName()) {
+                String displayName = itemInHand.getItemMeta().getDisplayName();
+                String stripped = ChatColor.stripColor(displayName);
+                
+                player.sendMessage(ChatColor.GRAY + "Display: " + displayName);
+                player.sendMessage(ChatColor.GRAY + "Stripped: " + stripped);
+                
+                if (plugin.getMaterialManager().isFarmingMaterial(itemInHand)) {
+                    MaterialType type = plugin.getMaterialManager().getMaterialType(itemInHand);
+                    int tier = plugin.getMaterialManager().getMaterialTier(itemInHand);
+                    player.sendMessage(ChatColor.GREEN + "✅ Detected as: " + type.getDisplayName() + " Tier " + tier);
+                    
+                    // Show the pouch key this would map to
+                    if (plugin.getPouchIntegrationManager().isEnabled()) {
+                        String pouchKey = plugin.getPouchIntegrationManager().getPouchItemKey(type, tier);
+                        player.sendMessage(ChatColor.AQUA + "🔑 Pouch key: " + pouchKey);
+                        
+                        // Check how many are in pouch
+                        int pouchAmount = plugin.getPouchIntegrationManager().getItemQuantityInPouch(player.getUniqueId(), type, tier);
+                        player.sendMessage(ChatColor.AQUA + "💰 In pouch: " + pouchAmount);
+                    }
+                } else {
+                    player.sendMessage(ChatColor.RED + "❌ Not detected as farming material");
+                    
+                    // Try to identify pattern
+                    if (stripped.matches("\\[\\s*[IVX]+\\s*\\].*")) {
+                        player.sendMessage(ChatColor.YELLOW + "⚠️ Matches tier pattern but not recognized");
+                    }
+                }
+            } else {
+                player.sendMessage(ChatColor.GRAY + "No display name or meta");
+            }
+        }
+        
+        // Test pouch integration status
+        if (plugin.getPouchIntegrationManager().isEnabled()) {
+            player.sendMessage("");
+            player.sendMessage(ChatColor.GREEN + "🔗 Pouch integration is working!");
+            player.sendMessage(ChatColor.GRAY + "API object: " + (plugin.getPouchIntegrationManager().getPouchAPI() != null ? "✅" : "❌"));
+        } else {
+            player.sendMessage("");
+            player.sendMessage(ChatColor.RED + "❌ Pouch integration is disabled!");
+            player.sendMessage(ChatColor.GRAY + "Check if IngredientPouchPlugin is loaded and enabled.");
         }
     }
 }

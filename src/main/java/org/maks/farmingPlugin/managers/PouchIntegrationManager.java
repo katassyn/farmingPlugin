@@ -1,17 +1,20 @@
 package org.maks.farmingPlugin.managers;
 
+import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
 import org.maks.farmingPlugin.FarmingPlugin;
 import org.maks.farmingPlugin.materials.MaterialType;
+
 import java.lang.reflect.Method;
 import java.util.Map;
+import java.util.HashMap;
 import java.util.UUID;
 import java.util.logging.Level;
 
 /**
- * Handles integration with the external IngredientPouch plugin. The manager
- * can query and modify pouch contents as well as coordinate consuming
- * materials for upgrades across a player's inventory and pouch.
+ * Enhanced integration with IngredientPouch plugin
+ * Now properly handles material mapping and provides public methods
  */
 public class PouchIntegrationManager {
     private final FarmingPlugin plugin;
@@ -20,36 +23,68 @@ public class PouchIntegrationManager {
     private Method updateItemQuantityMethod;
     private boolean enabled = false;
 
+    // Correct mapping of material names to pouch keys based on IngredientPouchPlugin
+    private static final Map<String, String> MATERIAL_TO_POUCH_KEY = new HashMap<>();
+    
+    static {
+        // These keys match exactly what's in PouchItemMappings.java
+        MATERIAL_TO_POUCH_KEY.put("plant_fiber", "farmer_plant_fiber");
+        MATERIAL_TO_POUCH_KEY.put("seed_pouch", "farmer_seed_pouch");
+        MATERIAL_TO_POUCH_KEY.put("compost_dust", "farmer_compost_dust");
+        MATERIAL_TO_POUCH_KEY.put("herb_extract", "farmer_herb_extract");
+        MATERIAL_TO_POUCH_KEY.put("mushroom_spores", "farmer_mushroom_spores");
+        MATERIAL_TO_POUCH_KEY.put("beeswax_chunk", "farmer_beeswax_chunk");
+        MATERIAL_TO_POUCH_KEY.put("druidic_essence", "farmer_druidic_essence");
+        MATERIAL_TO_POUCH_KEY.put("golden_truffle", "farmer_golden_truffle");
+        MATERIAL_TO_POUCH_KEY.put("ancient_grain", "farmer_ancient_grain");
+    }
+
     public PouchIntegrationManager(FarmingPlugin plugin) {
         this.plugin = plugin;
         initialize();
     }
 
-    /**
-     * Try to hook into IngredientPouchAPI if the plugin is present.
-     */
     private void initialize() {
         try {
             Plugin pouchPlugin = plugin.getServer().getPluginManager().getPlugin("IngredientPouchPlugin");
-            if (pouchPlugin != null) {
+            if (pouchPlugin != null && pouchPlugin.isEnabled()) {
+                plugin.getLogger().info("Found IngredientPouchPlugin v" + pouchPlugin.getDescription().getVersion() + ", attempting to hook...");
+                
                 Method getAPIMethod = pouchPlugin.getClass().getMethod("getAPI");
                 Object apiInstance = getAPIMethod.invoke(pouchPlugin);
+                
                 if (apiInstance != null) {
                     pouchAPI = apiInstance;
                     Class<?> apiClass = apiInstance.getClass();
                     getItemQuantityMethod = apiClass.getMethod("getItemQuantity", String.class, String.class);
                     updateItemQuantityMethod = apiClass.getMethod("updateItemQuantity", String.class, String.class, int.class);
                     enabled = true;
-                    plugin.getLogger().info("✓ Successfully hooked into IngredientPouchPlugin!");
+                    plugin.getLogger().info("✓ Successfully hooked into IngredientPouchPlugin API!");
+                    
+                    // Test the connection
+                    testConnection();
                 } else {
                     plugin.getLogger().warning("IngredientPouchPlugin found but API is not available!");
                 }
             } else {
-                plugin.getLogger().info("IngredientPouchPlugin not found - pouch integration disabled");
+                plugin.getLogger().info("IngredientPouchPlugin not found or not enabled - pouch integration disabled");
             }
         } catch (Exception e) {
-            plugin.getLogger().log(Level.WARNING, "Failed to initialize IngredientPouch integration", e);
+            plugin.getLogger().log(Level.WARNING, "Failed to initialize IngredientPouch integration: " + e.getMessage(), e);
             enabled = false;
+        }
+    }
+    
+    /**
+     * Test the API connection with a dummy call
+     */
+    private void testConnection() {
+        try {
+            // Test with a fake UUID and known item key
+            Object result = getItemQuantityMethod.invoke(pouchAPI, "00000000-0000-0000-0000-000000000000", "farmer_plant_fiber_I");
+            plugin.getLogger().info("✓ Pouch API connection test successful!");
+        } catch (Exception e) {
+            plugin.getLogger().warning("Pouch API connection test failed: " + e.getMessage());
         }
     }
 
@@ -58,170 +93,163 @@ public class PouchIntegrationManager {
     }
 
     /**
-     * Build the pouch item key for a given material type and tier.
-     * Format: farmer_[material_id]_[tier_roman]
+     * Get the correct pouch item key for a material and tier
      */
-    private String getPouchItemKey(MaterialType materialType, int tier) {
-        String tierRoman = switch (tier) {
+    public String getPouchItemKey(MaterialType materialType, int tier) {
+        String baseKey = MATERIAL_TO_POUCH_KEY.get(materialType.getId());
+        if (baseKey == null) {
+            plugin.getLogger().warning("No pouch mapping found for material: " + materialType.getId());
+            // Fallback to the standard format
+            baseKey = "farmer_" + materialType.getId();
+        }
+        
+        String fullKey = baseKey + "_" + getTierRoman(tier);
+        plugin.debug("Material " + materialType.getId() + " tier " + tier + " -> pouch key: " + fullKey);
+        return fullKey;
+    }
+    
+    /**
+     * Get the API object (for external use if needed)
+     */
+    public Object getPouchAPI() {
+        return pouchAPI;
+    }
+    
+    /**
+     * Get the getItemQuantity method (for external use if needed)
+     */
+    public Method getGetItemQuantityMethod() {
+        return getItemQuantityMethod;
+    }
+
+    private String getTierRoman(int tier) {
+        return switch (tier) {
             case 1 -> "I";
             case 2 -> "II";
             case 3 -> "III";
             default -> "I";
         };
-
-        return "farmer_" + materialType.getId() + "_" + tierRoman;
     }
 
     /**
-     * Check if player has specific amount of material in their pouch.
+     * Get the quantity of a specific material and tier in player's pouch
      */
-    public boolean hasIngredientInPouch(UUID playerUuid, MaterialType materialType, int tier, int amount) {
+    public int getItemQuantityInPouch(UUID playerUuid, MaterialType materialType, int tier) {
         if (!enabled || pouchAPI == null) {
-            return false;
+            return 0;
         }
 
         try {
             String itemKey = getPouchItemKey(materialType, tier);
+            plugin.debug("Checking pouch quantity for " + playerUuid + ": " + itemKey);
+            
             Object result = getItemQuantityMethod.invoke(pouchAPI, playerUuid.toString(), itemKey);
-            int currentAmount = result instanceof Integer ? (Integer) result : 0;
-
-            plugin.debug("Checking pouch for " + itemKey + ": has " + currentAmount + ", needs " + amount);
-
-            return currentAmount >= amount;
+            int quantity = result instanceof Integer ? (Integer) result : 0;
+            
+            plugin.debug("Pouch quantity result: " + quantity);
+            return quantity;
         } catch (Exception e) {
-            plugin.getLogger().warning("Error checking pouch ingredient for " + playerUuid + ": " + e.getMessage());
-            return false;
+            plugin.getLogger().warning("Error getting pouch quantity for " + materialType.getId() + 
+                                     " tier " + tier + " (player " + playerUuid + "): " + e.getMessage());
+            return 0;
         }
     }
 
     /**
-     * Add materials to player's pouch.
+     * Update the quantity of a material in player's pouch
+     * @param amount positive to add, negative to remove
      */
-    public boolean addIngredientToPouch(UUID playerUuid, MaterialType materialType, int tier, int amount) {
+    public boolean updatePouchQuantity(UUID playerUuid, MaterialType materialType, int tier, int amount) {
         if (!enabled || pouchAPI == null) {
             return false;
         }
 
         try {
             String itemKey = getPouchItemKey(materialType, tier);
+            plugin.debug("Updating pouch quantity for " + playerUuid + ": " + itemKey + " by " + amount);
+            
             Object result = updateItemQuantityMethod.invoke(pouchAPI, playerUuid.toString(), itemKey, amount);
             boolean success = result instanceof Boolean && (Boolean) result;
-
-            if (success) {
-                plugin.debug("Added " + amount + "x " + itemKey + " to " + playerUuid + "'s pouch");
-            } else {
-                plugin.debug("Failed to add " + itemKey + " to pouch (may be full or item not registered)");
-            }
-
+            
+            plugin.debug("Pouch update result: " + success);
             return success;
         } catch (Exception e) {
-            plugin.getLogger().warning("Error adding to pouch for " + playerUuid + ": " + e.getMessage());
+            plugin.getLogger().warning("Error updating pouch quantity for " + materialType.getId() + 
+                                     " tier " + tier + " (player " + playerUuid + "): " + e.getMessage());
             return false;
         }
     }
 
-    /**
-     * Remove materials from player's pouch.
-     */
-    public boolean removeIngredientFromPouch(UUID playerUuid, MaterialType materialType, int tier, int amount) {
-        if (!enabled || pouchAPI == null) {
-            return false;
-        }
-
-        try {
-            String itemKey = getPouchItemKey(materialType, tier);
-
-            // Check current amount first
-            Object current = getItemQuantityMethod.invoke(pouchAPI, playerUuid.toString(), itemKey);
-            int currentAmount = current instanceof Integer ? (Integer) current : 0;
-            if (currentAmount < amount) {
-                plugin.debug("Not enough " + itemKey + " in pouch: has " + currentAmount + ", needs " + amount);
-                return false;
-            }
-
-            Object result = updateItemQuantityMethod.invoke(pouchAPI, playerUuid.toString(), itemKey, -amount);
-            boolean success = result instanceof Boolean && (Boolean) result;
-
-            if (success) {
-                plugin.debug("Removed " + amount + "x " + itemKey + " from " + playerUuid + "'s pouch");
-            }
-
-            return success;
-        } catch (Exception e) {
-            plugin.getLogger().warning("Error removing from pouch for " + playerUuid + ": " + e.getMessage());
-            return false;
-        }
-    }
     /**
      * Check if player has enough materials for upgrade (checks both inventory and pouch)
-     * @return true if player has all required materials
      */
     public boolean hasUpgradeMaterials(Player player, Map<MaterialType, Integer> materials) {
         UUID playerUuid = player.getUniqueId();
+        
+        plugin.debug("=== Checking upgrade materials for " + player.getName() + " ===");
+        plugin.debug("Pouch integration enabled: " + enabled);
 
         for (Map.Entry<MaterialType, Integer> entry : materials.entrySet()) {
             MaterialType materialType = entry.getKey();
             int required = entry.getValue();
             int totalFound = 0;
 
-            // Count materials in inventory
-            totalFound += plugin.getMaterialManager().countMaterialInInventory(player, materialType, 1);
+            plugin.debug("Need " + required + "x " + materialType.getDisplayName());
 
-            // Also check tier 2 and 3 if needed
-            if (totalFound < required) {
-                totalFound += plugin.getMaterialManager().countMaterialInInventory(player, materialType, 2);
+            // Count materials in inventory (all tiers)
+            for (int tier = 1; tier <= 3; tier++) {
+                int invCount = plugin.getMaterialManager().countMaterialInInventory(player, materialType, tier);
+                totalFound += invCount;
+                if (invCount > 0) {
+                    plugin.debug("  Inventory tier " + tier + ": " + invCount);
+                }
+                
+                if (totalFound >= required) break;
             }
-            if (totalFound < required) {
-                totalFound += plugin.getMaterialManager().countMaterialInInventory(player, materialType, 3);
-            }
 
-            plugin.debug("Found " + totalFound + " " + materialType.getId() + " in inventory, need " + required);
+            plugin.debug("  Total in inventory: " + totalFound);
 
-            // If not enough in inventory, check pouch
+            // Check pouch if not enough in inventory
             if (totalFound < required && enabled) {
                 int needed = required - totalFound;
+                plugin.debug("  Still need " + needed + ", checking pouch...");
 
-                // Check all tiers in pouch
                 for (int tier = 1; tier <= 3; tier++) {
-                    if (hasIngredientInPouch(playerUuid, materialType, tier, needed)) {
-                        totalFound += needed;
-                        break;
-                    }
-
-                    // Check partial amount
-                    try {
-                        String itemKey = getPouchItemKey(materialType, tier);
-                        Object current = getItemQuantityMethod.invoke(pouchAPI, playerUuid.toString(), itemKey);
-                        int pouchAmount = current instanceof Integer ? (Integer) current : 0;
-                        if (pouchAmount > 0) {
-                            totalFound += Math.min(pouchAmount, needed);
-                            needed -= Math.min(pouchAmount, needed);
-                            if (needed <= 0) break;
-                        }
-                    } catch (Exception e) {
-                        plugin.getLogger().warning("Error checking pouch ingredient for " + playerUuid + ": " + e.getMessage());
+                    if (needed <= 0) break;
+                    
+                    int pouchAmount = getItemQuantityInPouch(playerUuid, materialType, tier);
+                    if (pouchAmount > 0) {
+                        plugin.debug("  Pouch tier " + tier + ": " + pouchAmount);
+                        int useFromPouch = Math.min(pouchAmount, needed);
+                        totalFound += useFromPouch;
+                        needed -= useFromPouch;
                     }
                 }
             }
 
+            plugin.debug("  Final total: " + totalFound + "/" + required);
+
             if (totalFound < required) {
-                plugin.debug("Not enough " + materialType.getId() + ": has " + totalFound + ", needs " + required);
+                plugin.debug("❌ Not enough " + materialType.getId() + ": has " + totalFound + ", needs " + required);
                 return false;
             }
         }
 
+        plugin.debug("✅ All materials available!");
         return true;
     }
 
     /**
-     * Consume materials for upgrade from both inventory and pouch
-     * @return true if materials were successfully consumed
+     * Consume materials from both inventory and pouch for upgrades
      */
     public boolean consumeUpgradeMaterials(Player player, Map<MaterialType, Integer> materials) {
         UUID playerUuid = player.getUniqueId();
+        
+        plugin.debug("=== Consuming upgrade materials for " + player.getName() + " ===");
 
         // First verify we have everything
         if (!hasUpgradeMaterials(player, materials)) {
+            plugin.debug("❌ Material check failed!");
             return false;
         }
 
@@ -229,83 +257,71 @@ public class PouchIntegrationManager {
         for (Map.Entry<MaterialType, Integer> entry : materials.entrySet()) {
             MaterialType materialType = entry.getKey();
             int required = entry.getValue();
+            
+            plugin.debug("Consuming " + required + "x " + materialType.getDisplayName());
 
             // Try to consume from inventory first (prefer lower tiers)
             for (int tier = 1; tier <= 3 && required > 0; tier++) {
-                int removed = plugin.getMaterialManager().removeMaterialFromInventory(
-                        player, materialType, tier, required);
+                int removed = plugin.getMaterialManager().removeMaterialFromInventory(player, materialType, tier, required);
                 required -= removed;
-
+                
                 if (removed > 0) {
-                    plugin.debug("Removed " + removed + "x " + materialType.getId() + " tier " + tier + " from inventory");
+                    plugin.debug("  Removed " + removed + "x tier " + tier + " from inventory");
+                    
+                    // Update database
+                    plugin.getDatabaseManager().updatePlayerMaterial(
+                        playerUuid, materialType.getId(), tier, -removed);
                 }
             }
 
             // Consume remaining from pouch if needed
             if (required > 0 && enabled) {
+                plugin.debug("  Still need to remove " + required + " from pouch...");
+                
                 for (int tier = 1; tier <= 3 && required > 0; tier++) {
-                    try {
-                        String itemKey = getPouchItemKey(materialType, tier);
-                        Object current = getItemQuantityMethod.invoke(pouchAPI, playerUuid.toString(), itemKey);
-                        int pouchAmount = current instanceof Integer ? (Integer) current : 0;
-
-                        if (pouchAmount > 0) {
-                            int toRemove = Math.min(pouchAmount, required);
-                            if (removeIngredientFromPouch(playerUuid, materialType, tier, toRemove)) {
-                                required -= toRemove;
-                                plugin.debug("Removed " + toRemove + "x " + materialType.getId() + " tier " + tier + " from pouch");
-                            }
+                    int pouchAmount = getItemQuantityInPouch(playerUuid, materialType, tier);
+                    if (pouchAmount > 0) {
+                        int toRemove = Math.min(pouchAmount, required);
+                        
+                        if (updatePouchQuantity(playerUuid, materialType, tier, -toRemove)) {
+                            required -= toRemove;
+                            plugin.debug("  Removed " + toRemove + "x tier " + tier + " from pouch");
+                        } else {
+                            plugin.getLogger().warning("Failed to remove " + toRemove + "x " + 
+                                                     materialType.getId() + " tier " + tier + " from pouch");
                         }
-                    } catch (Exception e) {
-                        plugin.getLogger().warning("Error removing from pouch for " + playerUuid + ": " + e.getMessage());
                     }
                 }
             }
 
             if (required > 0) {
-                plugin.getLogger().warning("Failed to consume all required " + materialType.getId() + " for " + player.getName());
+                plugin.getLogger().warning("❌ Failed to consume all required " + materialType.getId() + 
+                                         " for " + player.getName() + " (still need " + required + ")");
                 return false;
             }
         }
 
+        plugin.debug("✅ Successfully consumed all materials!");
         return true;
     }
 
     /**
-     * Transfer items from inventory to pouch
+     * Add materials to player's pouch
      */
-    public boolean transferToPouch(Player player, MaterialType materialType, int tier, int amount) {
-        if (!enabled) {
-            player.sendMessage("§cIngredientPouch plugin is not available!");
+    public boolean addIngredientToPouch(UUID playerUuid, MaterialType materialType, int tier, int amount) {
+        if (!enabled || pouchAPI == null) {
             return false;
         }
 
-        UUID playerUuid = player.getUniqueId();
+        boolean success = updatePouchQuantity(playerUuid, materialType, tier, amount);
 
-        // Check if player has the items in inventory
-        int inventoryAmount = plugin.getMaterialManager().countMaterialInInventory(player, materialType, tier);
-        if (inventoryAmount < amount) {
-            player.sendMessage("§cYou don't have enough items to transfer!");
-            return false;
-        }
-
-        // Remove from inventory
-        int removed = plugin.getMaterialManager().removeMaterialFromInventory(player, materialType, tier, amount);
-        if (removed != amount) {
-            player.sendMessage("§cFailed to remove items from inventory!");
-            return false;
-        }
-
-        // Add to pouch
-        if (addIngredientToPouch(playerUuid, materialType, tier, removed)) {
-            player.sendMessage("§aTransferred " + removed + "x " + materialType.getDisplayName() + " Tier " + tier + " to pouch!");
-            return true;
+        if (success) {
+            plugin.debug("✅ Added " + amount + "x " + materialType.getDisplayName() + " tier " + tier + " to pouch");
         } else {
-            // Failed to add to pouch, give items back
-            plugin.getMaterialManager().givePlayerMaterial(player, materialType, tier, removed);
-            player.sendMessage("§cFailed to add items to pouch (may be full or not registered)!");
-            return false;
+            plugin.debug("❌ Failed to add " + amount + "x " + materialType.getDisplayName() + " tier " + tier + " to pouch");
         }
+
+        return success;
     }
 
     /**
@@ -318,13 +334,7 @@ public class PouchIntegrationManager {
 
         int total = 0;
         for (int tier = 1; tier <= 3; tier++) {
-            String itemKey = getPouchItemKey(materialType, tier);
-            try {
-                Object current = getItemQuantityMethod.invoke(pouchAPI, playerUuid.toString(), itemKey);
-                total += current instanceof Integer ? (Integer) current : 0;
-            } catch (Exception ignored) {
-                // ignore and continue
-            }
+            total += getItemQuantityInPouch(playerUuid, materialType, tier);
         }
 
         return total;
@@ -336,7 +346,8 @@ public class PouchIntegrationManager {
     public void reload() {
         enabled = false;
         pouchAPI = null;
+        getItemQuantityMethod = null;
+        updateItemQuantityMethod = null;
         initialize();
     }
 }
-

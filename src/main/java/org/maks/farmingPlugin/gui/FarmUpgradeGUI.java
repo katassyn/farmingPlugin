@@ -14,16 +14,22 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.maks.farmingPlugin.FarmingPlugin;
 import org.maks.farmingPlugin.farms.FarmInstance;
 import org.maks.farmingPlugin.materials.MaterialType;
+import org.maks.farmingPlugin.materials.MaterialRequirement;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class FarmUpgradeGUI implements InventoryHolder {
     private final FarmingPlugin plugin;
     private final FarmInstance farmInstance;
     private final Player player;
     private final Inventory inventory;
+    
+    // Track confirmation states for purchases
+    private final Set<String> pendingConfirmations = new HashSet<>();
 
     public FarmUpgradeGUI(FarmingPlugin plugin, FarmInstance farmInstance, Player player) {
         this.plugin = plugin;
@@ -76,13 +82,9 @@ public class FarmUpgradeGUI implements InventoryHolder {
                       "&7Current efficiency: &e" + farmInstance.getEfficiency() + "x",
                       "&7Next: &a+1 efficiency");
 
-        // Quality Upgrade
+        // Quality Upgrade - NAPRAWKA: Usuń stare descriptions, nowa metoda sama je generuje
         addUpgradeItem(24, Material.DIAMOND, "&dQuality Upgrade", 
-                      farmInstance.getQualityUpgradeLevel(), 5, "quality",
-                      "&7Increases drop rates",
-                      "&7Current bonus: &e" + String.format("%.0f%%", 
-                          (farmInstance.getQualityModifier() - 1) * 100),
-                      "&7Next: &a+15% drop chance");
+                      farmInstance.getQualityUpgradeLevel(), 5, "quality");
 
         // Level Up (center bottom)
         addLevelUpItem();
@@ -119,8 +121,19 @@ public class FarmUpgradeGUI implements InventoryHolder {
         ItemMeta meta = item.getItemMeta();
         
         List<String> lore = new ArrayList<>();
-        for (String desc : description) {
-            lore.add(ChatColor.translateAlternateColorCodes('&', desc));
+        
+        // Custom descriptions based on upgrade type
+        if (upgradeType.equals("quality")) {
+            // NAPRAWKA: Pokazuj rzeczywiste drop rates dla quality upgrade
+            lore.add(ChatColor.translateAlternateColorCodes('&', "&7Increases drop rates"));
+            lore.add(ChatColor.translateAlternateColorCodes('&', "&7Current bonus: &e" + 
+                    String.format("%.0f%%", (farmInstance.getQualityModifier() - 1) * 100)));
+            lore.add(ChatColor.translateAlternateColorCodes('&', "&7Next: &a+15% drop multiplier"));
+        } else {
+            // Dla innych upgrade types użyj oryginalnych descriptions
+            for (String desc : description) {
+                lore.add(ChatColor.translateAlternateColorCodes('&', desc));
+            }
         }
         
         lore.add("");
@@ -130,18 +143,39 @@ public class FarmUpgradeGUI implements InventoryHolder {
         double cost = farmInstance.getUpgradeCost(upgradeType);
         lore.add(ChatColor.GOLD + "• " + plugin.getEconomyManager().formatMoney(cost));
         
-        // Material requirements
-        Map<MaterialType, Integer> materials = farmInstance.getUpgradeMaterials(upgradeType, currentLevel + 1);
-        for (Map.Entry<MaterialType, Integer> entry : materials.entrySet()) {
-            MaterialType mat = entry.getKey();
-            int amount = entry.getValue();
+        // Material requirements with specific tiers
+        List<MaterialRequirement> requirements = farmInstance.getUpgradeMaterialRequirements(upgradeType, currentLevel + 1);
+        for (MaterialRequirement req : requirements) {
+            MaterialType mat = req.getMaterialType();
+            int amount = req.getAmount();
+            int requiredTier = req.getTier();
             
-            int playerAmount = plugin.getDatabaseManager()
-                .getPlayerMaterialAmount(player.getUniqueId(), mat.getId(), 1);
+            // Count materials from both inventory and pouch
+            int playerTier1 = 0, playerTier2 = 0, playerTier3 = 0;
             
-            ChatColor color = playerAmount >= amount ? ChatColor.GREEN : ChatColor.RED;
-            lore.add(color + "• " + amount + "x " + mat.getDisplayName() + " T1 " +
-                    ChatColor.GRAY + "(" + playerAmount + ")");
+            // Check all tiers in inventory
+            playerTier1 += plugin.getMaterialManager().countMaterialInInventory(player, mat, 1);
+            playerTier2 += plugin.getMaterialManager().countMaterialInInventory(player, mat, 2);
+            playerTier3 += plugin.getMaterialManager().countMaterialInInventory(player, mat, 3);
+            
+            // Add from pouch if enabled
+            if (plugin.getPouchIntegrationManager().isEnabled()) {
+                try {
+                    playerTier1 += plugin.getPouchIntegrationManager().getItemQuantityInPouch(player.getUniqueId(), mat, 1);
+                    playerTier2 += plugin.getPouchIntegrationManager().getItemQuantityInPouch(player.getUniqueId(), mat, 2);
+                    playerTier3 += plugin.getPouchIntegrationManager().getItemQuantityInPouch(player.getUniqueId(), mat, 3);
+                } catch (Exception e) {
+                    plugin.getLogger().warning("Error accessing pouch for material " + mat.getId());
+                }
+            }
+            
+            // Check if player has enough using hierarchy
+            boolean hasEnough = req.hasEnough(playerTier1, playerTier2, playerTier3);
+            int totalAvailable = req.getTotalAvailable(playerTier1, playerTier2, playerTier3);
+            
+            ChatColor color = hasEnough ? ChatColor.GREEN : ChatColor.RED;
+            lore.add(color + "• " + amount + "x " + req.getDisplayName() + " " +
+                    ChatColor.GRAY + "(" + totalAvailable + ")");
         }
         
         lore.add("");
@@ -161,6 +195,12 @@ public class FarmUpgradeGUI implements InventoryHolder {
         
         item.setItemMeta(meta);
         inventory.setItem(slot, item);
+    }
+
+    // NAPRAWKA: Przeciążona metoda dla quality upgrade bez description parametrów
+    private void addUpgradeItem(int slot, Material material, String name, 
+                                int currentLevel, int maxLevel, String upgradeType) {
+        addUpgradeItem(slot, material, name, currentLevel, maxLevel, upgradeType, new String[0]);
     }
 
     private void addLevelUpItem() {
@@ -237,7 +277,7 @@ public class FarmUpgradeGUI implements InventoryHolder {
         lore.add(ChatColor.GRAY + "• Storage: " + ChatColor.WHITE + farmInstance.getMaxStorage());
         lore.add(ChatColor.GRAY + "• Efficiency: " + ChatColor.WHITE + farmInstance.getEfficiency() + "x");
         lore.add(ChatColor.GRAY + "• Quality: " + ChatColor.WHITE + 
-                String.format("%.0f%%", farmInstance.getQualityModifier() * 100));
+                String.format("+%.0f%%", (farmInstance.getQualityModifier() - 1) * 100));
         lore.add("");
         lore.add(ChatColor.GOLD + "Total Materials Produced:");
         lore.add(ChatColor.YELLOW + "" + farmInstance.getTotalMaterialsProduced());
@@ -280,6 +320,33 @@ public class FarmUpgradeGUI implements InventoryHolder {
             return;
         }
 
+        // Check if this is the first click (show cost and confirmation prompt)
+        if (!pendingConfirmations.contains(upgradeType)) {
+            pendingConfirmations.add(upgradeType);
+            
+            // Show cost breakdown
+            player.sendMessage(ChatColor.YELLOW + "══════════════════════════");
+            player.sendMessage(ChatColor.GOLD + upgradeType.toUpperCase() + " UPGRADE COST:");
+            
+            // Money cost
+            double cost = farmInstance.getUpgradeCost(upgradeType);
+            player.sendMessage(ChatColor.GOLD + "• Money: " + plugin.getEconomyManager().formatMoney(cost));
+            
+            // Material costs
+            Map<MaterialType, Integer> materials = farmInstance.getUpgradeMaterials(upgradeType, currentLevel + 1);
+            for (Map.Entry<MaterialType, Integer> entry : materials.entrySet()) {
+                player.sendMessage(ChatColor.GOLD + "• " + entry.getValue() + "x " + entry.getKey().getDisplayName());
+            }
+            
+            player.sendMessage(ChatColor.GREEN + "Click again to confirm purchase!");
+            player.sendMessage(ChatColor.YELLOW + "══════════════════════════");
+            player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.2f);
+            return;
+        }
+        
+        // Second click - proceed with purchase
+        pendingConfirmations.remove(upgradeType);
+
         // Deduct costs
         double cost = farmInstance.getUpgradeCost(upgradeType);
         plugin.getEconomyManager().withdrawMoney(player, cost);
@@ -321,10 +388,29 @@ public class FarmUpgradeGUI implements InventoryHolder {
 
         // Save and refresh
         plugin.getPlantationManager().savePlayerData(player.getUniqueId());
-        
+
         player.sendMessage(ChatColor.GREEN + "✔ Successfully purchased " + upgradeType + " upgrade!");
         player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.2f);
-        
+
+        // Fire FarmUpgradeEvent for QuestSystem integration
+        try {
+            Class<?> listenerClass = Class.forName("org.maks.questsystem.listeners.FarmingListener");
+            Class<?> eventClass = null;
+            for (Class<?> innerClass : listenerClass.getDeclaredClasses()) {
+                if (innerClass.getSimpleName().equals("FarmUpgradeEvent")) {
+                    eventClass = innerClass;
+                    break;
+                }
+            }
+            if (eventClass != null) {
+                Object event = eventClass.getConstructor(org.bukkit.entity.Player.class)
+                        .newInstance(player);
+                org.bukkit.Bukkit.getPluginManager().callEvent((org.bukkit.event.Event) event);
+            }
+        } catch (Exception ignored) {
+            // QuestSystem might not be loaded
+        }
+
         // Particle effect
         player.getWorld().spawnParticle(
             org.bukkit.Particle.TOTEM,
@@ -401,25 +487,34 @@ public class FarmUpgradeGUI implements InventoryHolder {
             default -> 1;
         };
 
-        Map<MaterialType, Integer> materials = farmInstance.getUpgradeMaterials(upgradeType, nextLevel);
-
-        // Check if pouch integration is available
-        if (plugin.getPouchIntegrationManager().isEnabled()) {
-            try {
-                return plugin.getPouchIntegrationManager().hasUpgradeMaterials(player, materials);
-            } catch (Exception e) {
-                plugin.getLogger().warning("Pouch integration error while checking materials: " + e.getMessage());
-                return false;
-            }
-        } else {
-            // Fallback to inventory-only check
-            for (Map.Entry<MaterialType, Integer> entry : materials.entrySet()) {
-                int playerAmount = plugin.getDatabaseManager()
-                    .getPlayerMaterialAmount(player.getUniqueId(), entry.getKey().getId(), 1);
-                
-                if (playerAmount < entry.getValue()) {
-                    return false;
+        // Check material requirements with tier hierarchy
+        List<MaterialRequirement> requirements = farmInstance.getUpgradeMaterialRequirements(upgradeType, nextLevel);
+        
+        for (MaterialRequirement req : requirements) {
+            MaterialType mat = req.getMaterialType();
+            
+            // Count materials from both inventory and pouch
+            int playerTier1 = 0, playerTier2 = 0, playerTier3 = 0;
+            
+            // Check all tiers in inventory
+            playerTier1 += plugin.getMaterialManager().countMaterialInInventory(player, mat, 1);
+            playerTier2 += plugin.getMaterialManager().countMaterialInInventory(player, mat, 2);
+            playerTier3 += plugin.getMaterialManager().countMaterialInInventory(player, mat, 3);
+            
+            // Add from pouch if enabled
+            if (plugin.getPouchIntegrationManager().isEnabled()) {
+                try {
+                    playerTier1 += plugin.getPouchIntegrationManager().getItemQuantityInPouch(player.getUniqueId(), mat, 1);
+                    playerTier2 += plugin.getPouchIntegrationManager().getItemQuantityInPouch(player.getUniqueId(), mat, 2);
+                    playerTier3 += plugin.getPouchIntegrationManager().getItemQuantityInPouch(player.getUniqueId(), mat, 3);
+                } catch (Exception e) {
+                    plugin.getLogger().warning("Error accessing pouch for material " + mat.getId());
                 }
+            }
+            
+            // Check if player has enough using hierarchy
+            if (!req.hasEnough(playerTier1, playerTier2, playerTier3)) {
+                return false;
             }
         }
         

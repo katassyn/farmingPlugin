@@ -17,6 +17,8 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.entity.Item;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
@@ -37,6 +39,7 @@ import org.maks.farmingPlugin.gui.QuickSellGUI;
 import org.maks.farmingPlugin.gui.PlantationTeleportGUI;
 import org.maks.farmingPlugin.managers.PlantationAreaManager;
 
+import java.lang.reflect.InvocationTargetException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -44,6 +47,7 @@ public class PlantationListeners implements Listener {
     private final FarmingPlugin plugin;
     private final Map<UUID, Long> lastInteraction = new ConcurrentHashMap<>();
     private final Map<UUID, FarmSelectionMode> farmSelectionModes = new ConcurrentHashMap<>();
+    private final Map<String, Long> pendingUnlocks = new ConcurrentHashMap<>();
 
     public PlantationListeners(FarmingPlugin plugin) {
         this.plugin = plugin;
@@ -53,11 +57,11 @@ public class PlantationListeners implements Listener {
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
-        
+
         // Load player data asynchronously
         plugin.getPlantationManager().loadPlayerData(uuid);
         plugin.getOfflineGrowthManager().onPlayerJoin(uuid);
-        
+
         // Check for first join (don't give items)
         if (!plugin.getDatabaseManager().loadPlayerPlot(uuid).isPresent()) {
             player.sendMessage(ChatColor.GREEN + "Welcome to the Farming System!");
@@ -68,10 +72,35 @@ public class PlantationListeners implements Listener {
             checkFarmsNeedingAttention(player);
         }
 
-        if (plugin.getConfig().getBoolean("plantation.rebuild_on_join", true)) {
+        // NAPRAWIONE: Lepsze czyszczenie hologramów przy join
+        // Nie używaj komend execute - one mogą nie działać prawidłowo
+        if (plugin.getHologramManager() != null) {
+            // Odłóż czyszczenie na chwilę po join
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                plugin.getPlantationAreaManager().regeneratePlayerArea(event.getPlayer());
-            }, 20L);
+                // Usuń stare hologramy gracza
+                plugin.getHologramManager().removePlayerHolograms(uuid);
+
+                // Poczekaj chwilę i odśwież plantację
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    if (plugin.getConfig().getBoolean("plantation.rebuild_on_join", true)) {
+                        plugin.getPlantationAreaManager().regeneratePlayerArea(player);
+                    }
+
+                    // Zaktualizuj wszystkie farmy gracza
+                    List<FarmInstance> farms = plugin.getPlantationManager().getPlayerFarms(uuid);
+                    for (FarmInstance farm : farms) {
+                        // Zaktualizuj storage na podstawie offline time
+                        farm.updateStorageItems();
+                    }
+                }, 20L); // 1 sekunda później
+            }, 10L); // 0.5 sekundy po join
+        } else {
+            // Jeśli nie ma hologram managera, tylko regeneruj obszar
+            if (plugin.getConfig().getBoolean("plantation.rebuild_on_join", true)) {
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    plugin.getPlantationAreaManager().regeneratePlayerArea(player);
+                }, 20L);
+            }
         }
     }
 
@@ -92,7 +121,7 @@ public class PlantationListeners implements Listener {
     }
 
     @EventHandler
-    public void onPlayerInteract(PlayerInteractEvent event) {
+    public void onPlayerInteract(PlayerInteractEvent event) throws InvocationTargetException, IllegalAccessException {
         if (event.getAction() != Action.RIGHT_CLICK_BLOCK) return;
 
         Player player = event.getPlayer();
@@ -109,13 +138,11 @@ public class PlantationListeners implements Listener {
             }
             event.setUseItemInHand(Event.Result.DENY);
         }
-        
+
         // Check for cooldown
         if (isOnCooldown(player)) {
             return;
         }
-        
-        // Remove permission check for plantation interaction - only level check needed
 
         FarmType farmType = FarmType.fromBlockType(block.getType());
         if (farmType == null) return;
@@ -144,11 +171,11 @@ public class PlantationListeners implements Listener {
 
         // Get the instance from location
         int instanceId = plugin.getPlantationAreaManager()
-            .getFarmInstanceFromLocation(player.getUniqueId(), farmType, block.getLocation());
+                .getFarmInstanceFromLocation(player.getUniqueId(), farmType, block.getLocation());
 
         if (instanceId == -1) {
             player.sendMessage(ChatColor.RED + "Please use one of the marked spots for "
-                               + farmType.getDisplayName() + ".");
+                    + farmType.getDisplayName() + ".");
             player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 0.8f);
             return;
         }
@@ -162,43 +189,58 @@ public class PlantationListeners implements Listener {
                 showUnlockRequirements(player, farmType);
                 return;
             }
-            
+
             // Create new farm instance
             Location anchorLocation = plugin.getPlantationAreaManager()
-                .getOrCreateFarmAnchor(player.getUniqueId(), farmType, instanceId);
-            
+                    .getOrCreateFarmAnchor(player.getUniqueId(), farmType, instanceId);
+
             if (anchorLocation == null) {
                 player.sendMessage(ChatColor.RED + "Failed to create farm anchor!");
                 return;
             }
-            
+
             farmInstance = plugin.getPlantationManager()
                     .createFarmInstance(player.getUniqueId(), farmType, instanceId, anchorLocation);
-            
-            player.sendMessage(ChatColor.GREEN + "✔ Created " + farmType.getDisplayName() + 
-                             " instance #" + instanceId + "!");
+
+            player.sendMessage(ChatColor.GREEN + "✔ Created " + farmType.getDisplayName() +
+                    " instance #" + instanceId + "!");
             player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 2.0f);
-            
+
             // Particles for new farm
             player.getWorld().spawnParticle(
-                org.bukkit.Particle.VILLAGER_HAPPY,
-                anchorLocation.clone().add(0.5, 1, 0.5),
-                30, 0.5, 0.5, 0.5, 0.1
+                    org.bukkit.Particle.VILLAGER_HAPPY,
+                    anchorLocation.clone().add(0.5, 1, 0.5),
+                    30, 0.5, 0.5, 0.5, 0.1
             );
         }
 
-        // Harvest instantly if ready, otherwise open the GUI
-        if (farmInstance.isReadyForHarvest()) {
+        // NAPRAWIONE: Sprawdź czy jest coś do zebrania
+        farmInstance.updateStorageItems();
+        int itemsInStorage = farmInstance.getCurrentStoredItems();
+
+        if (itemsInStorage > 0) {
+            // Jest coś do zebrania - zbierz
             plugin.getPlantationManager().processFarmHarvest(farmInstance);
         } else {
+            // Nic nie ma - otwórz GUI
             PlantationGUI gui = new PlantationGUI(plugin, farmInstance, player);
             player.openInventory(gui.getInventory());
+
+            // Pokaż info o statusie
+            if (itemsInStorage >= farmInstance.getMaxStorage()) {
+                player.sendMessage(ChatColor.RED + "⚠ Storage is FULL! Production stopped.");
+            } else {
+                long timeToNext = farmInstance.getTimeUntilNextHarvest();
+                if (timeToNext > 0) {
+                    String timeStr = formatTime(timeToNext);
+                    player.sendMessage(ChatColor.YELLOW + "⏳ Next production in: " + timeStr);
+                }
+            }
         }
 
         // Update cooldown
         lastInteraction.put(player.getUniqueId(), System.currentTimeMillis());
     }
-
     @EventHandler(ignoreCancelled = true, priority = EventPriority.HIGHEST)
     public void onRightClickLockedSign(PlayerInteractEvent e) {
         if (e.getAction() != Action.RIGHT_CLICK_BLOCK) return;
@@ -225,25 +267,38 @@ public class PlantationListeners implements Listener {
         Player player = e.getPlayer();
         e.setCancelled(true);
 
-        boolean unlocked = plugin.getPlantationManager().attemptUnlock(player, type, instanceId);
-        if (unlocked) {
-            plugin.getPlantationAreaManager().placeFarmBlock(b.getLocation(), type);
-            Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                FarmInstance fi = plugin.getPlantationManager().getFarmInstance(player.getUniqueId(), type, instanceId);
-                if (fi != null) {
-                    // Reset harvest timer to prevent instant harvest after unlock
-                    fi.setLastHarvest(System.currentTimeMillis());
-                    plugin.getPlantationManager().savePlayerData(player.getUniqueId());
-                    
-                    if (plugin.getHologramManager() != null) {
-                        plugin.getHologramManager().updateHologram(fi);
+        String unlockKey = player.getUniqueId() + ":" + type.getId() + ":" + instanceId;
+        Long lastClick = pendingUnlocks.get(unlockKey);
+        
+        // Check if this is within 10 seconds of first click (confirmation window)
+        if (lastClick != null && System.currentTimeMillis() - lastClick < 10000) {
+            // Second click - attempt unlock
+            pendingUnlocks.remove(unlockKey);
+            
+            boolean unlocked = plugin.getPlantationManager().attemptUnlock(player, type, instanceId);
+            if (unlocked) {
+                plugin.getPlantationAreaManager().placeFarmBlock(b.getLocation(), type);
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    FarmInstance fi = plugin.getPlantationManager().getFarmInstance(player.getUniqueId(), type, instanceId);
+                    if (fi != null) {
+                        // Reset harvest timer to prevent instant harvest after unlock
+                        fi.setLastHarvest(System.currentTimeMillis());
+                        plugin.getPlantationManager().savePlayerData(player.getUniqueId());
+                        
+                        if (plugin.getHologramManager() != null) {
+                            plugin.getHologramManager().updateHologram(fi);
+                        }
                     }
-                }
-            }, 2L);
-            player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
+                }, 2L);
+                player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
+            } else {
+                showUnlockRequirements(player, type);
+                player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 1f, 0.8f);
+            }
         } else {
-            showUnlockRequirements(player, type);
-            player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 1f, 0.8f);
+            // First click - show costs and requirements
+            pendingUnlocks.put(unlockKey, System.currentTimeMillis());
+            showUnlockRequirementsWithConfirmation(player, type);
         }
     }
 
@@ -538,7 +593,7 @@ public class PlantationListeners implements Listener {
         return null;
     }
 
-    private boolean canCreateFarm(Player player, FarmType farmType) {
+    private boolean canCreateFarm(Player player, FarmType farmType) throws InvocationTargetException, IllegalAccessException {
         // Berry Orchards is always available
         if (farmType == FarmType.BERRY_ORCHARDS) {
             return true;
@@ -571,6 +626,46 @@ public class PlantationListeners implements Listener {
         
         player.sendMessage(ChatColor.RED + "━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 0.8f);
+    }
+
+    private void showUnlockRequirementsWithConfirmation(Player player, FarmType farmType) {
+        player.sendMessage(ChatColor.YELLOW + "══════════════════════════");
+        player.sendMessage(ChatColor.GOLD + farmType.getDisplayName().toUpperCase() + " UNLOCK COST:");
+        
+        // Material requirements
+        List<String> requirements = plugin.getPlantationManager().getUnlockRequirementsDisplay(farmType);
+        for (String req : requirements) {
+            if (req.contains("•")) {
+                player.sendMessage(ChatColor.GOLD + req);
+            }
+        }
+        
+        // Check what player is missing
+        try {
+            boolean canUnlock = plugin.getPlantationManager().canUnlockFarm(player.getUniqueId(), farmType);
+            if (canUnlock) {
+                player.sendMessage(ChatColor.GREEN + "Click again within 10 seconds to confirm!");
+            } else {
+                // Check specifically what's missing
+                boolean hasEnoughMoney = plugin.getEconomyManager().hasBalance(player.getUniqueId(), farmType.getUnlockCost());
+                
+                if (!hasEnoughMoney) {
+                    double needed = farmType.getUnlockCost();
+                    double current = plugin.getEconomyManager().getBalance(player.getUniqueId());
+                    double missing = needed - current;
+                    player.sendMessage(ChatColor.RED + "Not enough money! Missing: " + 
+                                     plugin.getEconomyManager().formatMoney(missing));
+                } else {
+                    player.sendMessage(ChatColor.RED + "Not enough materials!");
+                }
+            }
+        } catch (InvocationTargetException | IllegalAccessException e) {
+            player.sendMessage(ChatColor.RED + "Error checking unlock requirements!");
+            plugin.getLogger().warning("Error checking unlock requirements: " + e.getMessage());
+        }
+        
+        player.sendMessage(ChatColor.YELLOW + "══════════════════════════");
+        player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.2f);
     }
 
     private void checkFarmsNeedingAttention(Player player) {
@@ -615,6 +710,104 @@ public class PlantationListeners implements Listener {
                          block.getLocation().getBlockZ());
     }
 
+    /**
+     * Prevent farming plugin items from being destroyed by cactus
+     */
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onItemDamage(EntityDamageEvent event) {
+        // Only handle item entities
+        if (!(event.getEntity() instanceof Item item)) return;
+        
+        // Only prevent cactus damage
+        if (event.getCause() != EntityDamageEvent.DamageCause.CONTACT) return;
+        
+        ItemStack itemStack = item.getItemStack();
+        if (itemStack == null) return;
+        
+        // Check if this is a farming plugin item (fruits or materials)
+        if (isFarmingPluginItem(itemStack)) {
+            event.setCancelled(true);
+            
+            // Optionally teleport the item to a safer location
+            Location safeLoc = findSafeLocationNearby(item.getLocation());
+            if (safeLoc != null && !safeLoc.equals(item.getLocation())) {
+                item.teleport(safeLoc);
+            }
+        }
+    }
+    
+    /**
+     * Check if an item is from the farming plugin (fruit or material)
+     */
+    private boolean isFarmingPluginItem(ItemStack item) {
+        if (item == null || !item.hasItemMeta()) return false;
+        
+        // Check for farming plugin NBT tags or display names
+        var meta = item.getItemMeta();
+        if (meta == null) return false;
+        
+        // Check for custom model data or NBT that indicates it's a farming item
+        if (meta.hasCustomModelData()) {
+            return true; // Assuming farming plugin items use custom model data
+        }
+        
+        // Check display name patterns
+        String displayName = meta.getDisplayName();
+        if (displayName != null) {
+            // Check for fruit names
+            if (displayName.contains("Sweet Berry") || 
+                displayName.contains("Melon") || 
+                displayName.contains("Mushroom") ||
+                displayName.contains("Pumpkin") ||
+                displayName.contains("Blossom") ||
+                displayName.contains("Seed") ||
+                displayName.contains("Date")) {
+                return true;
+            }
+            
+            // Check for material names (tier indicators)
+            if (displayName.contains("Tier I") || 
+                displayName.contains("Tier II") || 
+                displayName.contains("Tier III")) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Find a safe location nearby, avoiding cactus blocks
+     */
+    private Location findSafeLocationNearby(Location original) {
+        for (int radius = 1; radius <= 3; radius++) {
+            for (int dx = -radius; dx <= radius; dx++) {
+                for (int dz = -radius; dz <= radius; dz++) {
+                    if (Math.abs(dx) != radius && Math.abs(dz) != radius) continue;
+                    
+                    Location testLoc = original.clone().add(dx, 0, dz);
+                    
+                    // Check if location is safe
+                    boolean safe = true;
+                    for (int checkDx = -1; checkDx <= 1 && safe; checkDx++) {
+                        for (int checkDz = -1; checkDz <= 1 && safe; checkDz++) {
+                            Block block = testLoc.clone().add(checkDx, 0, checkDz).getBlock();
+                            if (block.getType() == Material.CACTUS) {
+                                safe = false;
+                            }
+                        }
+                    }
+                    
+                    if (safe) {
+                        return testLoc;
+                    }
+                }
+            }
+        }
+        
+        return null; // No safe location found
+    }
+
     // Farm selection mode for future features
     private static class FarmSelectionMode {
         final String mode;
@@ -623,6 +816,21 @@ public class PlantationListeners implements Listener {
         FarmSelectionMode(String mode, Object data) {
             this.mode = mode;
             this.data = data;
+        }
+    }
+
+    // Format remaining time helper for messages
+    private String formatTime(long millis) {
+        if (millis <= 0) return "0s";
+        long hours = java.util.concurrent.TimeUnit.MILLISECONDS.toHours(millis);
+        long minutes = java.util.concurrent.TimeUnit.MILLISECONDS.toMinutes(millis) % 60;
+        long seconds = java.util.concurrent.TimeUnit.MILLISECONDS.toSeconds(millis) % 60;
+        if (hours > 0) {
+            return String.format("%dh %dm", hours, minutes);
+        } else if (minutes > 0) {
+            return String.format("%dm %ds", minutes, seconds);
+        } else {
+            return String.format("%ds", seconds);
         }
     }
 }

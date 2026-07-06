@@ -13,6 +13,10 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.maks.farmingPlugin.FarmingPlugin;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -140,11 +144,11 @@ public class PlayerSettingsGUI implements InventoryHolder {
         List<String> lore = new ArrayList<>();
         
         // Get player statistics from database
-        try {
-            String sql = "SELECT * FROM farming_player_stats WHERE uuid = ?";
-            var stmt = plugin.getDatabaseManager().prepareStatement(sql);
+        String sql = "SELECT * FROM farming_player_stats WHERE uuid = ?";
+        try (Connection conn = plugin.getDatabaseManager().getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, player.getUniqueId().toString());
-            var rs = stmt.executeQuery();
+            try (ResultSet rs = stmt.executeQuery()) {
             
             if (rs.next()) {
                 lore.add(ChatColor.GRAY + "Total Farms: " + ChatColor.WHITE + 
@@ -161,13 +165,11 @@ public class PlayerSettingsGUI implements InventoryHolder {
                 int playMinutes = rs.getInt("play_time_minutes");
                 lore.add(ChatColor.GRAY + "Play Time: " + ChatColor.YELLOW + 
                         formatPlayTime(playMinutes));
-            } else {
-                lore.add(ChatColor.GRAY + "No statistics available yet!");
+                } else {
+                    lore.add(ChatColor.GRAY + "No statistics available yet!");
+                }
             }
-            
-            rs.close();
-            stmt.close();
-        } catch (Exception e) {
+        } catch (SQLException e) {
             lore.add(ChatColor.RED + "Error loading statistics!");
         }
         

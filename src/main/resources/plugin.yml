@@ -15,6 +15,10 @@ commands:
     description: Main plantation command
     usage: /plantation [tp|info|stats|settings|help]
     aliases: [farm, farms, plant]
+  farmer_shop:
+    description: Open the farmer shop
+    usage: /farmer_shop
+    aliases: [fshop, farmshop]
 
 permissions:
   plantation.use:
